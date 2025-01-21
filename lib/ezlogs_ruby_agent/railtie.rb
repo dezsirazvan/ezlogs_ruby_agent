@@ -2,6 +2,7 @@ require 'rails/railtie'
 require 'ezlogs_ruby_agent/callbacks_tracker'
 require 'ezlogs_ruby_agent/http_tracker'
 require 'ezlogs_ruby_agent/job_tracker'
+require 'ezlogs_ruby_agent/sidekiq_job_tracker'
 
 module EzlogsRubyAgent
   class Railtie < ::Rails::Railtie
@@ -15,7 +16,6 @@ module EzlogsRubyAgent
       end
     end
 
-    # Add middleware early in the initialization process
     initializer "ezlogs_ruby_agent.insert_middleware", before: :build_middleware_stack do |app|
       if EzlogsRubyAgent.config.capture_http
         app.middleware.use EzlogsRubyAgent::HttpTracker
@@ -29,6 +29,14 @@ module EzlogsRubyAgent
 
       ActiveSupport.on_load(:active_job) do
         prepend EzlogsRubyAgent::JobTracker if EzlogsRubyAgent.config.capture_jobs
+      end
+    end
+
+    initializer "ezlogs_ruby_agent.configure_sidekiq" do
+      Sidekiq.configure_server do |config|
+        config.server_middleware do |chain|
+          chain.add EzlogsRubyAgent::SidekiqJobTracker
+        end
       end
     end
   end
