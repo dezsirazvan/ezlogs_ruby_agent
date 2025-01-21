@@ -59,4 +59,47 @@ RSpec.describe EzlogsRubyAgent::CallbacksTracker, type: :module do
       expect(model.send(:trackable_model?)).to be true
     end
   end
+
+  describe 'callbacks' do
+    let(:dummy_model_class) { DummyModel }
+
+    it 'calls log_create_event on after_create callback' do
+      allow(EzlogsRubyAgent::EventQueue).to receive(:add)
+
+      EzlogsRubyAgent.config.models_to_track = ['DummyModel']
+      model = dummy_model_class.new
+      model.run_callbacks(:create) { true }
+
+      expect(EzlogsRubyAgent::EventQueue).to have_received(:add).with(hash_including({
+        action: 'create',
+        model: 'DummyModel'
+      }))
+    end
+
+    it 'calls log_update_event on after_update callback' do
+      allow(EzlogsRubyAgent::EventQueue).to receive(:add)
+
+      EzlogsRubyAgent.config.models_to_track = ['DummyModel']
+      model = dummy_model_class.new
+      model.run_callbacks(:update) { true }
+
+      expect(EzlogsRubyAgent::EventQueue).to have_received(:add).with(hash_including({
+        action: 'update',
+        model: 'DummyModel'
+      }))
+    end
+
+    it 'calls log_destroy_event on after_destroy callback' do
+      allow(EzlogsRubyAgent::EventQueue).to receive(:add)
+
+      EzlogsRubyAgent.config.models_to_track = ['DummyModel']
+      model = dummy_model_class.new
+      model.run_callbacks(:destroy) { true }
+
+      expect(EzlogsRubyAgent::EventQueue).to have_received(:add).with(hash_including({
+        action: 'destroy',
+        model: 'DummyModel'
+      }))
+    end
+  end
 end
