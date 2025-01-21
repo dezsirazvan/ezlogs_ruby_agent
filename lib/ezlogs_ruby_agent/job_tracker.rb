@@ -2,6 +2,7 @@ module EzlogsRubyAgent
   module JobTracker
     def perform(*args)
       return unless trackable_job?
+      request_id = Thread.current[:ezlogs_request_id] || args.extract_options!.dig(:request_id)
 
       start_time = Time.current
       super
@@ -12,6 +13,7 @@ module EzlogsRubyAgent
         job_name: self.class.name,
         arguments: args,
         status: "completed",
+        request_id: request_id,
         duration: (end_time - start_time).to_f,
         timestamp: Time.current
       })
@@ -21,6 +23,7 @@ module EzlogsRubyAgent
         job_name: self.class.name,
         arguments: args,
         status: "failed",
+        request_id: request_id,
         error: e.message,
         timestamp: Time.current
       })

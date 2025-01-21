@@ -24,6 +24,7 @@ module EzlogsRubyAgent
         action: "create",
         model: self.class.name,
         changes: attributes,
+        request_id: Thread.current[:ezlogs_request_id],
         timestamp: Time.current
       })
     end
@@ -34,6 +35,7 @@ module EzlogsRubyAgent
         action: "update",
         model: self.class.name,
         changes: previous_changes,
+        request_id: Thread.current[:ezlogs_request_id],
         timestamp: Time.current
       })
     end
@@ -44,6 +46,7 @@ module EzlogsRubyAgent
         action: "destroy",
         model: self.class.name,
         changes: attributes,
+        request_id: Thread.current[:ezlogs_request_id],
         timestamp: Time.current
       })
     end

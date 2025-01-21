@@ -3,6 +3,7 @@ module EzlogsRubyAgent
     @queue = Queue.new
 
     def self.add(event)
+      event[:request_id] ||= Thread.current[:ezlogs_request_id]
       @queue << event
       process_queue if @queue.size >= EzlogsRubyAgent.config.batch_size
     end
