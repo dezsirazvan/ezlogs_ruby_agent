@@ -1,4 +1,5 @@
-require "ezlogs_ruby_agent/railtie" if defined?(Rails)
+require 'ezlogs_ruby_agent/railtie' if defined?(Rails)
+require 'ezlogs_ruby_agent/configuration'
 
 module EzlogsRubyAgent
   def self.configure
