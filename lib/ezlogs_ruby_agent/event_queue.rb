@@ -3,32 +3,37 @@ module EzlogsRubyAgent
     include Singleton
 
     def initialize
-      @queue = Queue.new
+      @buffer = []
+      @mutex = Mutex.new
     end
 
     def add(event)
       event[:request_id] ||= Thread.current[:ezlogs_request_id]
-      @queue << event
 
-      process_queue if @queue.size >= EzlogsRubyAgent.config.batch_size
-    end
-
-    def process_queue
-      return if @queue.empty?
-
-      events = []
-      while !@queue.empty?
-        events << @queue.pop
+      @mutex.synchronize do
+        @buffer << event
       end
 
-      send_to_server(events)
+      if @buffer.size >= EzlogsRubyAgent.config.batch_size
+        flush
+      end
     end
 
-    def send_to_server(events)
-      Thread.new do
-        uri = URI(EzlogsRubyAgent.config.endpoint_url)
-        Net::HTTP.post(uri, events.to_json, "Content-Type" => "application/json")
+    def flush
+      events_to_send = nil
+
+      @mutex.synchronize do
+        events_to_send = @buffer.dup
+        @buffer.clear
       end
+
+      enqueue_job(events_to_send) if events_to_send.any?
+    end
+
+    private
+
+    def enqueue_job(events)
+      EzlogsRubyAgent::Jobs::EventSenderJob.perform_later(events)
     end
   end
 end
