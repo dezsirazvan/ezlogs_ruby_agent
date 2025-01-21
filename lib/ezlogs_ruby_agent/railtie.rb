@@ -1,9 +1,7 @@
-# lib/ezlogs_ruby_agent/railtie.rb
 module EzlogsRubyAgent
   class Railtie < Rails::Railtie
     initializer "ezlogs_ruby_agent.configure" do |app|
       EzlogsRubyAgent.configure do |config|
-        # Set default configuration values here
         config.capture_http = true
         config.capture_callbacks = true
         config.capture_jobs = true
