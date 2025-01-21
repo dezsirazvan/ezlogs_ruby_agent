@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 RSpec.describe EzlogsRubyAgent::Configuration do
   subject(:config) { EzlogsRubyAgent::Configuration.new }
 
@@ -30,8 +32,8 @@ RSpec.describe EzlogsRubyAgent::Configuration do
     end
 
     it 'allows setting and getting models_to_track' do
-      config.models_to_track = ['User', 'Order']
-      expect(config.models_to_track).to eq(['User', 'Order'])
+      config.models_to_track = %w[User Order]
+      expect(config.models_to_track).to eq(%w[User Order])
     end
 
     it 'allows setting and getting exclude_models' do

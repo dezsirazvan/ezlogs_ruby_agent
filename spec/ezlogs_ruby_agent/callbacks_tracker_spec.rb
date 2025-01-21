@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'spec_helper'
 require 'active_support/concern'
 require 'ezlogs_ruby_agent/event_queue'
@@ -7,20 +9,19 @@ require 'ezlogs_ruby_agent/callbacks_tracker'
 RSpec.describe EzlogsRubyAgent::CallbacksTracker, type: :module do
   before do
     schema_cache_double = double(
-      'schema_cache', 
+      'schema_cache',
       columns_hash: {},
       data_source_exists?: true
     )
-    connection_double = double('connection', 
-      established?: true, 
-      schema_cache: schema_cache_double,
-      tables: [],
-      columns: [],
-      execute: nil
-    )
+    connection_double = double('connection',
+                               established?: true,
+                               schema_cache: schema_cache_double,
+                               tables: [],
+                               columns: [],
+                               execute: nil)
     allow(ActiveRecord::Base).to receive(:connection).and_return(connection_double)
 
-    class DummyModel < ActiveRecord::Base
+    class DummyModel < ActiveRecord::Base # rubocop:disable Lint/ConstantDefinitionInBlock
       self.table_name = nil
 
       include EzlogsRubyAgent::CallbacksTracker

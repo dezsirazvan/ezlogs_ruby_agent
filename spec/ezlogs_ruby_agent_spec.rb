@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 RSpec.describe EzlogsRubyAgent do
   describe '.configure' do
     it 'yields the config block if a block is given' do
@@ -16,11 +18,11 @@ RSpec.describe EzlogsRubyAgent do
     it 'sets custom configuration using the block' do
       EzlogsRubyAgent.configure do |config|
         config.endpoint_url = 'https://example.com'
-        config.models_to_track = ['User', 'Order']
+        config.models_to_track = %w[User Order]
       end
 
       expect(EzlogsRubyAgent.config.endpoint_url).to eq('https://example.com')
-      expect(EzlogsRubyAgent.config.models_to_track).to eq(['User', 'Order'])
+      expect(EzlogsRubyAgent.config.models_to_track).to eq(%w[User Order])
     end
   end
 
