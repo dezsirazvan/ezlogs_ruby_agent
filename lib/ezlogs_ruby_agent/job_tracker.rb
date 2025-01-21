@@ -1,11 +1,15 @@
+require 'active_support/all'
+
 module EzlogsRubyAgent
   module JobTracker
     def perform(*args)
       return unless trackable_job?
-      request_id = Thread.current[:ezlogs_request_id] || args.extract_options!.dig(:request_id)
+      request_id = Thread.current[:ezlogs_request_id] || SecureRandom.uuid
 
       start_time = Time.current
+
       super
+
       end_time = Time.current
 
       EzlogsRubyAgent::EventQueue.add({
