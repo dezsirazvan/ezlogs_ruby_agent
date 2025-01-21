@@ -33,15 +33,13 @@ module EzlogsRubyAgent
     private
 
     def enqueue_job(events)
-      def enqueue_job(events)
-        events_json = events.to_json
-  
-        if EzlogsRubyAgent.config.job_adapter == :sidekiq
-          EzlogsRubyAgent::EventSenderJob.set(queue: :ezlogs_events).perform_async(events_json)
-        else
-          EzlogsRubyAgent::EventSenderJob.perform_later(events_json)
-        end
+      events_json = events.to_json
+
+      if EzlogsRubyAgent.config.job_adapter == :sidekiq
+        EzlogsRubyAgent::EventSenderJob.set(queue: :ezlogs_events).perform_async(events_json)
+      else
+        EzlogsRubyAgent::EventSenderJob.perform_later(events_json)
       end
     end
-  end
+end
 end
