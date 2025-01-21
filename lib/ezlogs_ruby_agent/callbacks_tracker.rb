@@ -21,7 +21,7 @@ module EzlogsRubyAgent
     end
 
     def log_create_event
-      EzlogsRubyAgent::EventQueue.add({
+      EzlogsRubyAgent::EventQueue.instance.add({
         type: "model_callback",
         action: "create",
         model: self.class.name,
@@ -32,7 +32,7 @@ module EzlogsRubyAgent
     end
 
     def log_update_event
-      EzlogsRubyAgent::EventQueue.add({
+      EzlogsRubyAgent::EventQueue.instance.add({
         type: "model_callback",
         action: "update",
         model: self.class.name,
@@ -43,7 +43,7 @@ module EzlogsRubyAgent
     end
 
     def log_destroy_event
-      EzlogsRubyAgent::EventQueue.add({
+      EzlogsRubyAgent::EventQueue.instance.add({
         type: "model_callback",
         action: "destroy",
         model: self.class.name,

@@ -13,7 +13,7 @@ module EzlogsRubyAgent
 
       end_time = Time.current
 
-      EzlogsRubyAgent::EventQueue.add({
+      EzlogsRubyAgent::EventQueue.instance.add({
         type: "background_job",
         job_name: self.class.name,
         arguments: args,
@@ -23,7 +23,7 @@ module EzlogsRubyAgent
         timestamp: Time.current
       })
     rescue => e
-      EzlogsRubyAgent::EventQueue.add({
+      EzlogsRubyAgent::EventQueue.instance.add({
         type: "background_job",
         job_name: self.class.name,
         arguments: args,

@@ -20,7 +20,7 @@ module EzlogsRubyAgent
       model_name = extract_model_name(env)
 
       if trackable_request?(model_name)
-        EzlogsRubyAgent::EventQueue.add({
+        EzlogsRubyAgent::EventQueue.instance.add({
           type: "http_request",
           method: env["REQUEST_METHOD"],
           path: env["PATH_INFO"],
