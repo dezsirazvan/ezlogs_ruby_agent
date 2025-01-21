@@ -15,20 +15,21 @@ module EzlogsRubyAgent
       end
     end
 
-    initializer "ezlogs_ruby_agent.include_modules", before: :load_config_initializers do
-      ActiveSupport.on_load(:active_record) do
-        include EzlogsRubyAgent::CallbacksTracker if EzlogsRubyAgent.config.capture_callbacks
-      end
-
+    config.to_prepare do
       ActiveSupport.on_load(:action_controller) do
         if EzlogsRubyAgent.config.capture_http
           Rails.application.config.middleware.insert_before(Rack::Sendfile, EzlogsRubyAgent::HttpTracker)
         end
       end
 
+      ActiveSupport.on_load(:active_record) do
+        include EzlogsRubyAgent::CallbacksTracker if EzlogsRubyAgent.config.capture_callbacks
+      end
+
       ActiveSupport.on_load(:active_job) do
         prepend EzlogsRubyAgent::JobTracker if EzlogsRubyAgent.config.capture_jobs
       end
     end
+  end
   end
 end
