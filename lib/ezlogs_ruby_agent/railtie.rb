@@ -1,5 +1,10 @@
+require 'rails/railtie'
+require 'ezlogs_ruby_agent/callbacks_tracker'
+require 'ezlogs_ruby_agent/http_tracker'
+require 'ezlogs_ruby_agent/job_tracker'
+
 module EzlogsRubyAgent
-  class Railtie < Rails::Railtie
+  class Railtie < ::Rails::Railtie
     initializer "ezlogs_ruby_agent.configure" do |app|
       EzlogsRubyAgent.configure do |config|
         config.capture_http = true
