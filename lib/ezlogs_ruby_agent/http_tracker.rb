@@ -1,5 +1,6 @@
 require 'rack'
 require 'active_support/all'
+require 'ezlogs_ruby_agent/event_queue'
 
 module EzlogsRubyAgent
   class HttpTracker

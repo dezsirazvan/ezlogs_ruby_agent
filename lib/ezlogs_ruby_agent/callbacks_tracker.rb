@@ -1,3 +1,5 @@
+require 'ezlogs_ruby_agent/event_queue'
+
 module EzlogsRubyAgent
   module CallbacksTracker
     extend ActiveSupport::Concern
