@@ -1,8 +1,13 @@
-# frozen_string_literal: true
-
-require_relative "ezlogs_ruby_agent/version"
+require "ezlogs_ruby_agent/railtie" if defined?(Rails)
 
 module EzlogsRubyAgent
-  class Error < StandardError; end
-  # Your code goes here...
+  def self.configure
+    @config ||= EzlogsRubyAgent::Configuration.new
+    yield(@config) if block_given?
+    @config
+  end
+
+  def self.config
+    @config ||= EzlogsRubyAgent::Configuration.new
+  end
 end
