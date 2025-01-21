@@ -15,7 +15,7 @@ module EzlogsRubyAgent
       end
     end
 
-    initializer "ezlogs_ruby_agent.include_modules",, before: :load_config_initializers do
+    initializer "ezlogs_ruby_agent.include_modules", before: :load_config_initializers do
       ActiveSupport.on_load(:active_record) do
         include EzlogsRubyAgent::CallbacksTracker if EzlogsRubyAgent.config.capture_callbacks
       end
