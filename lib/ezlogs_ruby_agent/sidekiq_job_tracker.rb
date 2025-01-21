@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 module EzlogsRubyAgent
   class SidekiqJobTracker
-    def call(worker, job, queue)
+    def call(worker, job, _queue)
       config = EzlogsRubyAgent.config
       job_name = worker.class.name
 
@@ -11,17 +13,17 @@ module EzlogsRubyAgent
 
       begin
         yield
-        status = "completed"
-      rescue => e
-        status = "failed"
+        status = 'completed'
+      rescue StandardError => e
+        status = 'failed'
         error = e.message
         raise e
       ensure
         end_time = Time.current
         EzlogsRubyAgent::EventQueue.instance.add({
-          type: "background_job",
+          type: 'background_job',
           job_name: job_name,
-          arguments: job["args"],
+          arguments: job['args'],
           status: status,
           error: error,
           request_id: request_id,
@@ -34,8 +36,8 @@ module EzlogsRubyAgent
     private
 
     def trackable_job?(job_name, config)
-      model_match = config.models_to_track.empty? || 
-        config.models_to_track.any? { |model| job_name.include?(model) }
+      model_match = config.models_to_track.empty? ||
+                    config.models_to_track.any? { |model| job_name.include?(model) }
       excluded_match = config.exclude_models.any? { |model| job_name.include?(model) }
 
       model_match && !excluded_match

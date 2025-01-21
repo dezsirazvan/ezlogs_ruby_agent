@@ -17,9 +17,7 @@ module EzlogsRubyAgent
     end
 
     initializer "ezlogs_ruby_agent.insert_middleware", before: :build_middleware_stack do |app|
-      if EzlogsRubyAgent.config.capture_http
-        app.middleware.use EzlogsRubyAgent::HttpTracker
-      end
+      app.middleware.use EzlogsRubyAgent::HttpTracker if EzlogsRubyAgent.config.capture_http
     end
 
     initializer "ezlogs_ruby_agent.include_modules" do
@@ -41,11 +39,11 @@ module EzlogsRubyAgent
     end
 
     initializer "ezlogs_ruby_agent.configure_jobs" do
-      if defined?(Sidekiq)
-        EzlogsRubyAgent.config.job_adapter = :sidekiq
-      else
-        EzlogsRubyAgent.config.job_adapter = :active_job
-      end
+      EzlogsRubyAgent.config.job_adapter = if defined?(Sidekiq)
+                                             :sidekiq
+                                           else
+                                             :active_job
+                                           end
     end
   end
 end

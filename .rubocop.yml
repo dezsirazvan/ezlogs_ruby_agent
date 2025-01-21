@@ -2,3 +2,9 @@ inherit_from: .rubocop_todo.yml
 
 Metrics/BlockLength:
   Enabled: false
+
+Metrics/AbcSize:
+  Enabled: false
+
+Style/Documentation:
+  Enabled: false
