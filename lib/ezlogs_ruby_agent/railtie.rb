@@ -31,9 +31,11 @@ module EzlogsRubyAgent
     end
 
     initializer "ezlogs_ruby_agent.configure_sidekiq" do
-      Sidekiq.configure_server do |config|
-        config.server_middleware do |chain|
-          chain.add EzlogsRubyAgent::SidekiqJobTracker
+      if EzlogsRubyAgent.config.capture_jobs
+        Sidekiq.configure_server do |config|
+          config.server_middleware do |chain|
+            chain.add EzlogsRubyAgent::SidekiqJobTracker
+          end
         end
       end
     end
