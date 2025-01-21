@@ -9,7 +9,7 @@ module EzlogsRubyAgent
       @capture_callbacks = true
       @capture_jobs = true
       @models_to_track = []
-      @exclude_models = []
+      @exclude_models = ['EzlogsRubyAgent']
       @batch_size = 100
       @endpoint_url = "https://api.ezlogs.com/events"
       @job_adapter = :active_job

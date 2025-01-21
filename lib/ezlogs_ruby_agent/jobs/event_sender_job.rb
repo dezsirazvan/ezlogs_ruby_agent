@@ -2,15 +2,19 @@
 
 module EzlogsRubyAgent
   module Jobs
-    class EventSenderJob < ActiveJob::Base
-      queue_as :default
+    class EventSenderJob
+      if defined?(Sidekiq)
+        include Sidekiq::Job
+      else
+        include ActiveJob::Base
+      end
 
       def perform(events)
         uri = URI(EzlogsRubyAgent.config.endpoint_url)
 
         response = Net::HTTP.post(uri, events, 'Content-Type' => 'application/json')
 
-        unless response.is_a?(Net::HTTPSuccess)
+        if response.code.to_i < 200 || response.code.to_i >= 400
           Rails.logger.error("Ezlogs EventSenderJob: Failed to send events: #{response.code} - #{response.body}")
           raise StandardError, 'Failed to send events to Ezlogs'
         end
