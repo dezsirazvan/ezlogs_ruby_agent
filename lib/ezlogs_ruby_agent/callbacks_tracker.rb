@@ -3,12 +3,20 @@ module EzlogsRubyAgent
     extend ActiveSupport::Concern
 
     included do
-      after_create :log_create_event
-      after_update :log_update_event
-      after_destroy :log_destroy_event
+      after_create :log_create_event, if: :trackable_model?
+      after_update :log_update_event, if: :trackable_model?
+      after_destroy :log_destroy_event, if: :trackable_model?
     end
 
     private
+
+    def trackable_model?
+      config = EzlogsRubyAgent.config
+      model_name = self.class.name
+
+      (config.models_to_track.empty? || config.models_to_track.include?(model_name)) &&
+        !config.exclude_models.include?(model_name)
+    end
 
     def log_create_event
       EzlogsRubyAgent::EventQueue.add({
