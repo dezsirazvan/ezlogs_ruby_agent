@@ -1,40 +1,52 @@
-RSpec.describe EzlogsRubyAgent do
-  describe '.configure' do
-    it 'yields the config block if a block is given' do
-      EzlogsRubyAgent.configure do |config|
-        config.batch_size = 10
-      end
-      expect(EzlogsRubyAgent.config.batch_size).to eq(10)
-    end
+RSpec.describe EzlogsRubyAgent::Configuration do
+  subject(:config) { EzlogsRubyAgent::Configuration.new }
 
-    it 'does not yield the config block if no block is given' do
-      EzlogsRubyAgent.instance_variable_set(:@config, nil)
-
-      expect(EzlogsRubyAgent.config.batch_size).to eq(100)
-    end
-
-    it 'sets custom configuration using the block' do
-      EzlogsRubyAgent.configure do |config|
-        config.endpoint_url = 'https://example.com'
-        config.models_to_track = ['User', 'Order']
-      end
-
-      expect(EzlogsRubyAgent.config.endpoint_url).to eq('https://example.com')
-      expect(EzlogsRubyAgent.config.models_to_track).to eq(['User', 'Order'])
+  describe '#initialize' do
+    it 'sets default values for all attributes' do
+      expect(config.capture_http).to be true
+      expect(config.capture_callbacks).to be true
+      expect(config.capture_jobs).to be true
+      expect(config.models_to_track).to eq([])
+      expect(config.exclude_models).to eq([])
+      expect(config.batch_size).to eq(100)
+      expect(config.endpoint_url).to eq('https://api.ezlogs.com/events')
     end
   end
 
-  describe '.config' do
-    it 'returns the current configuration object' do
-      expect(EzlogsRubyAgent.config).to be_a(EzlogsRubyAgent::Configuration)
+  describe 'attribute setters and getters' do
+    it 'allows setting and getting capture_http' do
+      config.capture_http = false
+      expect(config.capture_http).to be false
     end
 
-    it 'returns the same instance of config every time' do
-      first_instance = EzlogsRubyAgent.config
-      second_instance = EzlogsRubyAgent.config
+    it 'allows setting and getting capture_callbacks' do
+      config.capture_callbacks = false
+      expect(config.capture_callbacks).to be false
+    end
 
-      expect(first_instance).to eq(second_instance)
-      expect(first_instance.object_id).to eq(second_instance.object_id)
+    it 'allows setting and getting capture_jobs' do
+      config.capture_jobs = false
+      expect(config.capture_jobs).to be false
+    end
+
+    it 'allows setting and getting models_to_track' do
+      config.models_to_track = ['User', 'Order']
+      expect(config.models_to_track).to eq(['User', 'Order'])
+    end
+
+    it 'allows setting and getting exclude_models' do
+      config.exclude_models = ['Admin']
+      expect(config.exclude_models).to eq(['Admin'])
+    end
+
+    it 'allows setting and getting batch_size' do
+      config.batch_size = 200
+      expect(config.batch_size).to eq(200)
+    end
+
+    it 'allows setting and getting endpoint_url' do
+      config.endpoint_url = 'https://new-api.com/events'
+      expect(config.endpoint_url).to eq('https://new-api.com/events')
     end
   end
 end
