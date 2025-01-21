@@ -5,7 +5,7 @@ require 'ezlogs_ruby_agent/job_tracker'
 
 module EzlogsRubyAgent
   class Railtie < ::Rails::Railtie
-    initializer "ezlogs_ruby_agent.configure", before: :initialize_middleware do |app|
+    initializer "ezlogs_ruby_agent.configure" do |app|
       EzlogsRubyAgent.configure do |config|
         config.capture_http = true
         config.capture_callbacks = true
@@ -15,7 +15,7 @@ module EzlogsRubyAgent
       end
     end
 
-    initializer "ezlogs_ruby_agent.include_modules", before: :initialize_middleware do
+    initializer "ezlogs_ruby_agent.include_modules",, before: :load_config_initializers do
       ActiveSupport.on_load(:active_record) do
         include EzlogsRubyAgent::CallbacksTracker if EzlogsRubyAgent.config.capture_callbacks
       end
