@@ -1,3 +1,6 @@
+require 'rack'
+require 'active_support/all'
+
 module EzlogsRubyAgent
   class HttpTracker
     def initialize(app)
