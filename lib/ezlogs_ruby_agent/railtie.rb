@@ -22,7 +22,7 @@ module EzlogsRubyAgent
 
       ActiveSupport.on_load(:action_controller) do
         if EzlogsRubyAgent.config.capture_http
-          Rails.application.config.middleware.insert_before(Rack::Sendfile, EzlogsRubyAgent::HttpTracker)
+          Rails.application.config.middleware.use EzlogsRubyAgent::HttpTracker
         end
       end
 
