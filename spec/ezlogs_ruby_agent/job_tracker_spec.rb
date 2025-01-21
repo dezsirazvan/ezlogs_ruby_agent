@@ -35,7 +35,6 @@
 #           job_name: "ExampleJob",
 #           arguments: args,
 #           status: "completed",
-#           request_id: "request-id",
 #           duration: (end_time - start_time).to_f,
 #           timestamp: end_time
 #         }))
@@ -58,33 +57,9 @@
 #           job_name: "ExampleJob",
 #           arguments: args,
 #           status: "failed",
-#           request_id: "request-id",
 #           error: "Job failed",
 #           timestamp: an_instance_of(Time)
 #         })
-#       end
-#     end
-
-#     context 'when request_id is not passed in the options' do
-#       it 'uses Thread.current[:ezlogs_request_id] if available' do
-#         Thread.current[:ezlogs_request_id] = 'thread-id'
-
-#         allow(Time).to receive(:current).and_return(Time.now)
-#         start_time = Time.current
-
-#         job.perform(*args)
-
-#         end_time = Time.current
-
-#         expect(EzlogsRubyAgent::EventQueue).to have_received(:add).with(hash_including({
-#           type: "background_job",
-#           job_name: "ExampleJob",
-#           arguments: args,
-#           status: "completed",
-#           request_id: "thread-id",
-#           duration: (end_time - start_time).to_f,
-#           timestamp: end_time
-#         }))
 #       end
 #     end
 

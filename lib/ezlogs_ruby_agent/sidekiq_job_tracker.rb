@@ -9,7 +9,6 @@ module EzlogsRubyAgent
       return yield unless trackable_job?(job_name, config)
 
       start_time = Time.current
-      request_id = Thread.current[:ezlogs_request_id] || SecureRandom.uuid
 
       begin
         yield
@@ -26,7 +25,6 @@ module EzlogsRubyAgent
           arguments: job['args'],
           status: status,
           error: error,
-          request_id: request_id,
           duration: (end_time - start_time).to_f,
           timestamp: Time.current
         })

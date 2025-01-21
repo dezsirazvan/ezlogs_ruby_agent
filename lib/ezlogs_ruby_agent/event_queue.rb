@@ -8,8 +8,6 @@ module EzlogsRubyAgent
     end
 
     def add(event)
-      event[:request_id] ||= Thread.current[:ezlogs_request_id]
-
       @mutex.synchronize do
         @buffer << event
       end

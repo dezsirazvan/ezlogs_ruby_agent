@@ -26,14 +26,6 @@ RSpec.describe EzlogsRubyAgent::HttpTracker, type: :request do
   end
 
   describe '#call' do
-    it 'generates a request ID and stores it in the thread' do
-      expect(SecureRandom).to receive(:uuid).and_return('request-id')
-
-      http_tracker.call(env)
-
-      expect(Thread.current[:ezlogs_request_id]).to eq('request-id')
-    end
-
     it 'adds an event to the EventQueue for trackable requests' do
       time = Time.current
       allow(Time).to receive(:current).and_return(time)
@@ -49,7 +41,6 @@ RSpec.describe EzlogsRubyAgent::HttpTracker, type: :request do
         path: '/models/1',
         params: { 'param1' => 'value1', 'param2' => 'value2' },
         status: 200,
-        request_id: 'request-id',
         timestamp: time,
         response_time: 0.0
       })
@@ -81,7 +72,6 @@ RSpec.describe EzlogsRubyAgent::HttpTracker, type: :request do
         method: 'GET',
         path: '/models/1',
         params: { 'param1' => 'value1', 'param2' => 'value2' },
-        request_id: 'request-id',
         status: 200,
         response_time: 0.0,
         timestamp: time

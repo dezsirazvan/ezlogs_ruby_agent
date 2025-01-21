@@ -10,12 +10,8 @@ module EzlogsRubyAgent
 
     def call(env)
       start_time = Time.current
-      request_id = SecureRandom.uuid
-      Thread.current[:ezlogs_request_id] = request_id
       status, headers, response = @app.call(env)
       end_time = Time.current
-
-      headers['X-Request-ID'] = request_id
 
       model_name = extract_model_name(env)
 
@@ -26,7 +22,6 @@ module EzlogsRubyAgent
           path: env["PATH_INFO"],
           params: parse_params(env),
           status: status,
-          request_id: request_id,
           response_time: (end_time - start_time).to_f,
           timestamp: Time.current
         })
