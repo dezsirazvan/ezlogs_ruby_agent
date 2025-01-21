@@ -6,7 +6,7 @@ module EzlogsRubyAgent
       def perform(events)
         uri = URI(EzlogsRubyAgent.config.endpoint_url)
 
-        response = Net::HTTP.post(uri, events.to_json, "Content-Type" => "application/json")
+        response = Net::HTTP.post(uri, events, "Content-Type" => "application/json")
 
         unless response.is_a?(Net::HTTPSuccess)
           Rails.logger.error("Ezlogs EventSenderJob: Failed to send events: #{response.code} - #{response.body}")

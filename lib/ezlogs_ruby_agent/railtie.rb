@@ -39,5 +39,13 @@ module EzlogsRubyAgent
         end
       end
     end
+
+    initializer "ezlogs_ruby_agent.configure_jobs" do
+      if defined?(Sidekiq)
+        EzlogsRubyAgent.config.job_adapter = :sidekiq
+      else
+        EzlogsRubyAgent.config.job_adapter = :active_job
+      end
+    end
   end
 end
