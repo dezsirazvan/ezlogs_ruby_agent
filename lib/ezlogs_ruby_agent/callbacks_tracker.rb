@@ -5,19 +5,22 @@ module EzlogsRubyAgent
     extend ActiveSupport::Concern
 
     included do
-      after_create :log_create_event, if: :trackable_model?
-      after_update :log_update_event, if: :trackable_model?
-      after_destroy :log_destroy_event, if: :trackable_model?
+      after_create :log_create_event, if: :trackable_resource?
+      after_update :log_update_event, if: :trackable_resource?
+      after_destroy :log_destroy_event, if: :trackable_resource?
     end
 
     private
 
-    def trackable_model?
+    def trackable_resource?
       config = EzlogsRubyAgent.config
-      model_name = self.class.name
+      resource_name = self.class.name
 
-      (config.models_to_track.empty? || config.models_to_track.include?(model_name)) &&
-        !config.exclude_models.include?(model_name)
+      (
+        config.resources_to_track.empty? || 
+        config.resources_to_track.map(&:downcase).include?(resource_name.downcase)
+      ) &&
+        !config.exclude_resources.include?(resource_name.downcase)
     end
 
     def log_create_event
@@ -38,9 +41,9 @@ module EzlogsRubyAgent
       actor = EzlogsRubyAgent::ActorExtractor.extract_actor
 
       EzlogsRubyAgent::EventQueue.instance.add({
-        type: "model_callback",
+        type: "resource_callback",
         action: action,
-        model: self.class.name,
+        resource: self.class.name,
         changes: changes,
         correlation_id: correlation_id,
         resource_id: resource_id,

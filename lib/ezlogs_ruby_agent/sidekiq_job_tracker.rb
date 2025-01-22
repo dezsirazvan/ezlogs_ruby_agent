@@ -42,11 +42,11 @@ module EzlogsRubyAgent
     end
 
     def trackable_job?(job_name, config)
-      model_match = config.models_to_track.empty? ||
-                    config.models_to_track.any? { |model| job_name.include?(model) }
-      excluded_match = config.exclude_models.any? { |model| job_name.include?(model) }
+      resource_match = config.resources_to_track.empty? ||
+                    config.resources_to_track.any? { |resource| job_name.downcase.include?(resource) }
+      excluded_match = config.exclude_resources.any? { |resource| job_name.downcase.include?(resource) }
 
-      model_match && !excluded_match
+      resource_match && !excluded_match
     end
 
     def add_event(event_data)

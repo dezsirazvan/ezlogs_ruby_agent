@@ -17,7 +17,7 @@ module EzlogsRubyAgent
       status, headers, response = @app.call(env)
       end_time = Time.current
 
-      model_name = extract_model_name(env)
+      resource_name = extract_resource_name(env)
 
       error_message = nil
       if status.to_s.start_with?('4') || status.to_s.start_with?('5')
@@ -26,7 +26,7 @@ module EzlogsRubyAgent
 
       actor = ActorExtractor.extract_actor(env)
 
-      if trackable_request?(model_name)
+      if trackable_request?(resource_name)
         add_event({
           type: "http_request",
           method: env["REQUEST_METHOD"],
@@ -83,9 +83,9 @@ module EzlogsRubyAgent
       error_message
     end
 
-    def extract_model_name(env)
+    def extract_resource_name(env)
       path_parts = env["PATH_INFO"].split("/")
-      path_parts[1].singularize.camelize if path_parts.size > 1
+      path_parts[1].singularize if path_parts.size > 1
     end
 
     def parse_params(env)
@@ -94,12 +94,15 @@ module EzlogsRubyAgent
       {}
     end
 
-    def trackable_request?(model_name)
-      return true if model_name.nil?
+    def trackable_request?(resource_name)
+      return true if resource_name.nil?
 
       config = EzlogsRubyAgent.config
-      (config.models_to_track.empty? || config.models_to_track.include?(model_name)) &&
-        !config.exclude_models.include?(model_name)
+      (
+        config.resources_to_track.empty? || 
+        config.resources_to_track.map(&:downcase).include?(resource_name.downcase)
+      ) &&
+        !config.exclude_resources.map(&:downcase).include?(resource_name.downcase)
     end
 
     def add_event(event_data)
