@@ -11,7 +11,9 @@ module EzlogsRubyAgent
 
       super
 
+      actor = EzlogsRubyAgent::ActorExtractor.extract_actor
       end_time = Time.current
+
       add_event({
         type: "background_job",
         job_name: self.class.name,
@@ -21,6 +23,7 @@ module EzlogsRubyAgent
         duration: (end_time - start_time).to_f,
         correlation_id: correlation_id,
         resource_id: resource_id,
+        actor: actor,
         timestamp: Time.current
       })
     rescue => e
@@ -32,6 +35,7 @@ module EzlogsRubyAgent
         error_message: e.message,
         correlation_id: correlation_id,
         resource_id: resource_id,
+        actor: actor,
         timestamp: Time.current
       })
       raise e

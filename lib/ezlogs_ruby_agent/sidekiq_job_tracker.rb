@@ -8,6 +8,7 @@ module EzlogsRubyAgent
       start_time = Time.current
       correlation_id = job['correlation_id'] || Thread.current[:correlation_id] || SecureRandom.uuid
       resource_id = extract_resource_id_from_job(job)
+      actor = EzlogsRubyAgent::ActorExtractor.extract_actor
 
       begin
         yield
@@ -28,6 +29,7 @@ module EzlogsRubyAgent
           duration: (end_time - start_time).to_f,
           correlation_id: correlation_id,
           resource_id: resource_id,
+          actor: actor,
           timestamp: Time.current
         })
       end
