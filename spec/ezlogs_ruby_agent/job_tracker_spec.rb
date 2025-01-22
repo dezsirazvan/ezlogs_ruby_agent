@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 # require 'spec_helper'
 # require 'ezlogs_ruby_agent/job_tracker'
 # require 'ezlogs_ruby_agent/event_queue'

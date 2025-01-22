@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module EzlogsRubyAgent
   class SidekiqJobTracker
     def call(worker, job, _queue)

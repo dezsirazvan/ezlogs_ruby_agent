@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 RSpec.describe EzlogsRubyAgent do
   describe '.configure' do
     it 'yields the config block if a block is given' do

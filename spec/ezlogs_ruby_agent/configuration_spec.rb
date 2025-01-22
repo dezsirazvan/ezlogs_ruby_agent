@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 RSpec.describe EzlogsRubyAgent::Configuration do
   subject(:config) { EzlogsRubyAgent::Configuration.new }
 

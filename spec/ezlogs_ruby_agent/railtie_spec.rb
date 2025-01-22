@@ -1,8 +1,4 @@
-# frozen_string_literal: true
-
-# # frozen_string_literal: true
-
-# require 'spec_helper'
+# # require 'spec_helper'
 # require 'rails'
 # require 'ezlogs_ruby_agent/railtie'
 

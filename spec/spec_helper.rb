@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 require "ezlogs_ruby_agent"
 
 RSpec.configure do |config|
