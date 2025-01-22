@@ -7,6 +7,11 @@ require 'ezlogs_ruby_agent/job_enqueue_middleware'
 
 module EzlogsRubyAgent
   class Railtie < ::Rails::Railtie
+    initializer "ezlogs_ruby_agent.configure" do |app|
+      EzlogsRubyAgent.configure do |config|
+      end
+    end
+
     initializer "ezlogs_ruby_agent.insert_middleware", before: :build_middleware_stack do |app|
       app.middleware.use EzlogsRubyAgent::HttpTracker if EzlogsRubyAgent.config.capture_http
     end
