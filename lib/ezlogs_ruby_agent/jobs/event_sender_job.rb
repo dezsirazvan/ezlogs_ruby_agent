@@ -4,7 +4,7 @@ module EzlogsRubyAgent
       if defined?(Sidekiq)
         include Sidekiq::Job
 
-        sidekiq_options queue: EzlogsRubyAgent.config.background_jobs_queue
+        sidekiq_options queue: -> { EzlogsRubyAgent.config.background_jobs_queue }
       else
         include ActiveJob::Base
 
