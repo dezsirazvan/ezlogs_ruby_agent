@@ -21,31 +21,24 @@ module EzlogsRubyAgent
     end
 
     def log_create_event
-      EzlogsRubyAgent::EventQueue.instance.add({
-        type: "model_callback",
-        action: "create",
-        model: self.class.name,
-        changes: attributes,
-        timestamp: Time.current
-      })
+      log_event("create", attributes)
     end
 
     def log_update_event
-      EzlogsRubyAgent::EventQueue.instance.add({
-        type: "model_callback",
-        action: "update",
-        model: self.class.name,
-        changes: previous_changes,
-        timestamp: Time.current
-      })
+      log_event("update", previous_changes)
     end
 
     def log_destroy_event
+      log_event("destroy", attributes)
+    end
+
+    def log_event(action, changes)
       EzlogsRubyAgent::EventQueue.instance.add({
         type: "model_callback",
-        action: "destroy",
+        action: action,
         model: self.class.name,
-        changes: attributes,
+        changes: changes,
+        correlation_id: Thread.current[:correlation_id],
         timestamp: Time.current
       })
     end
