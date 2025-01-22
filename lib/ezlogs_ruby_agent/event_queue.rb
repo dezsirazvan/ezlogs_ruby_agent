@@ -34,7 +34,7 @@ module EzlogsRubyAgent
       events_json = events.to_json
 
       if EzlogsRubyAgent.config.job_adapter == :sidekiq
-        EzlogsRubyAgent::Jobs::EventSenderJob.set.perform_async(events_json)
+        EzlogsRubyAgent::Jobs::EventSenderJob.perform_async(events_json)
       else
         EzlogsRubyAgent::Jobs::EventSenderJob.perform_later(events_json)
       end
