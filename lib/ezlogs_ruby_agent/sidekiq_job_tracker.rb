@@ -24,7 +24,7 @@ module EzlogsRubyAgent
           job_name: job_name,
           arguments: job['args'],
           status: status,
-          error: error_message,
+          error_message: error_message,
           duration: (end_time - start_time).to_f,
           correlation_id: correlation_id,
           resource_id: resource_id,

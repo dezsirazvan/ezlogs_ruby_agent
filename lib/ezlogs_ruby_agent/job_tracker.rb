@@ -17,6 +17,7 @@ module EzlogsRubyAgent
         job_name: self.class.name,
         arguments: args,
         status: "completed",
+        error_message: nil,
         duration: (end_time - start_time).to_f,
         correlation_id: correlation_id,
         resource_id: resource_id,
@@ -28,7 +29,7 @@ module EzlogsRubyAgent
         job_name: self.class.name,
         arguments: args,
         status: "failed",
-        error: e.message,
+        error_message: e.message,
         correlation_id: correlation_id,
         resource_id: resource_id,
         timestamp: Time.current
