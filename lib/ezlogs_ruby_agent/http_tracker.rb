@@ -1,6 +1,7 @@
 require 'rack'
 require 'active_support/all'
 require 'ezlogs_ruby_agent/event_queue'
+require 'ezlogs_ruby_agent/actor_extractor'
 
 module EzlogsRubyAgent
   class HttpTracker
@@ -23,6 +24,8 @@ module EzlogsRubyAgent
         error_message = extract_error_message_from_response(response)
       end
 
+      actor = ActorExtractor.extract_actor(env)
+
       if trackable_request?(model_name)
         add_event({
           type: "http_request",
@@ -35,6 +38,7 @@ module EzlogsRubyAgent
           resource_id: resource_id,
           error_message: error_message,
           user_agent: env["HTTP_USER_AGENT"],
+          actor: actor,
           ip_address: env["REMOTE_ADDR"],
           timestamp: Time.current
         })
