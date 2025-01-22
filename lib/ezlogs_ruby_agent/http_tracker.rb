@@ -70,12 +70,15 @@ module EzlogsRubyAgent
     end
 
     def extract_error_message_from_response(response)
-      response_body = response.body
+      return response if response.is_a?(String) || response.is_a?(Array)
+
       begin
+        response_body = response.body
+
         error_details = JSON.parse(response_body)
         error_message = error_details["error"] || error_details["message"] || "Unknown error"
       rescue JSON::ParserError
-        error_message = response_body
+        error_message = response
       end
       error_message
     end
