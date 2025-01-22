@@ -8,7 +8,8 @@ module EzlogsRubyAgent
       return yield unless trackable_job?(job_name, config)
 
       start_time = Time.current
-      correlation_id = job['correlation_id'] || SecureRandom.uuid
+      correlation_id = job['correlation_id'] || Thread.current[:correlation_id] || SecureRandom.uuid
+      resource_id = extract_resource_id_from_job(job)
 
       begin
         yield
@@ -28,12 +29,17 @@ module EzlogsRubyAgent
           error: error_message,
           duration: (end_time - start_time).to_f,
           correlation_id: correlation_id,
+          resource_id: resource_id,
           timestamp: Time.current
         })
       end
     end
 
     private
+
+    def extract_resource_id_from_job(job)
+      job['args'].first[:id] if job['args'].first.is_a?(Hash)
+    end
 
     def trackable_job?(job_name, config)
       model_match = config.models_to_track.empty? ||

@@ -33,12 +33,16 @@ module EzlogsRubyAgent
     end
 
     def log_event(action, changes)
+      resource_id = id
+      correlation_id = Thread.current[:correlation_id] || SecureRandom.uuid
+
       EzlogsRubyAgent::EventQueue.instance.add({
         type: "model_callback",
         action: action,
         model: self.class.name,
         changes: changes,
-        correlation_id: Thread.current[:correlation_id],
+        correlation_id: correlation_id,
+        resource_id: resource_id,
         timestamp: Time.current
       })
     end

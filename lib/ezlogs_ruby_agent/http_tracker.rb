@@ -11,6 +11,7 @@ module EzlogsRubyAgent
     def call(env)
       start_time = Time.current
       correlation_id = env["HTTP_X_CORRELATION_ID"] || SecureRandom.uuid
+      resource_id = extract_resource_id(env)
 
       status, headers, response = @app.call(env)
       end_time = Time.current
@@ -26,6 +27,7 @@ module EzlogsRubyAgent
           status: status,
           duration: (end_time - start_time).to_f,
           correlation_id: correlation_id,
+          resource_id: resource_id,
           user_agent: env["HTTP_USER_AGENT"],
           ip_address: env["REMOTE_ADDR"],
           timestamp: Time.current
@@ -36,6 +38,26 @@ module EzlogsRubyAgent
     end
 
     private
+
+    def extract_resource_id(env)
+      if env["PATH_INFO"].include?("graphql")
+        extract_resource_id_from_graphql(env)
+      else
+        path_parts = env["PATH_INFO"].split("/")
+        path_parts[1].singularize.camelize if path_parts.size > 1
+      end
+    end
+
+    def extract_resource_id_from_graphql(env)
+      body = begin
+        JSON.parse(env["rack.input"].read)
+      rescue
+        {}
+      end
+      variables = body["variables"] || {}
+
+      variables["id"]
+    end
 
     def extract_model_name(env)
       path_parts = env["PATH_INFO"].split("/")

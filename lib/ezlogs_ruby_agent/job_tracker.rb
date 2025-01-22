@@ -7,6 +7,7 @@ module EzlogsRubyAgent
 
       start_time = Time.current
       correlation_id = Thread.current[:correlation_id] || SecureRandom.uuid
+      resource_id = extract_resource_id_from_args(args)
 
       super
 
@@ -18,6 +19,7 @@ module EzlogsRubyAgent
         status: "completed",
         duration: (end_time - start_time).to_f,
         correlation_id: correlation_id,
+        resource_id: resource_id,
         timestamp: Time.current
       })
     rescue => e
@@ -28,12 +30,17 @@ module EzlogsRubyAgent
         status: "failed",
         error: e.message,
         correlation_id: correlation_id,
+        resource_id: resource_id,
         timestamp: Time.current
       })
       raise e
     end
 
     private
+
+    def extract_resource_id_from_args(args)
+      args.first[:id] if args.first.is_a?(Hash)
+    end
 
     def trackable_job?
       config = EzlogsRubyAgent.config
