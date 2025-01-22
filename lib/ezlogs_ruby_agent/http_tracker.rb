@@ -10,19 +10,24 @@ module EzlogsRubyAgent
 
     def call(env)
       start_time = Time.current
+      correlation_id = env["HTTP_X_CORRELATION_ID"] || SecureRandom.uuid
+
       status, headers, response = @app.call(env)
       end_time = Time.current
 
       model_name = extract_model_name(env)
 
       if trackable_request?(model_name)
-        EzlogsRubyAgent::EventQueue.instance.add({
+        add_event({
           type: "http_request",
           method: env["REQUEST_METHOD"],
           path: env["PATH_INFO"],
           params: parse_params(env),
           status: status,
-          response_time: (end_time - start_time).to_f,
+          duration: (end_time - start_time).to_f,
+          correlation_id: correlation_id,
+          user_agent: env["HTTP_USER_AGENT"],
+          ip_address: env["REMOTE_ADDR"],
           timestamp: Time.current
         })
       end
@@ -49,6 +54,10 @@ module EzlogsRubyAgent
       config = EzlogsRubyAgent.config
       (config.models_to_track.empty? || config.models_to_track.include?(model_name)) &&
         !config.exclude_models.include?(model_name)
+    end
+
+    def add_event(event_data)
+      EzlogsRubyAgent::EventQueue.instance.add(event_data)
     end
   end
 end
