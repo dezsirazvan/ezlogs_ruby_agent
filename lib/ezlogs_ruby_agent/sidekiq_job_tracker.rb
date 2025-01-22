@@ -43,8 +43,8 @@ module EzlogsRubyAgent
 
     def trackable_job?(job_name, config)
       resource_match = config.resources_to_track.empty? ||
-                    config.resources_to_track.any? { |resource| job_name.downcase.include?(resource) }
-      excluded_match = config.exclude_resources.any? { |resource| job_name.downcase.include?(resource) }
+                    config.resources_to_track.any? { |resource| job_name.downcase.include?(resource.downcase) }
+      excluded_match = config.exclude_resources.any? { |resource| job_name.downcase.include?(resource.downcase) }
 
       resource_match && !excluded_match
     end
