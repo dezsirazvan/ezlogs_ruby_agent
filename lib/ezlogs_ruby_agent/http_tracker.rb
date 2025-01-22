@@ -18,6 +18,11 @@ module EzlogsRubyAgent
 
       model_name = extract_model_name(env)
 
+      error_message = nil
+      if status.to_s.start_with?('4') || status.to_s.start_with?('5')
+        error_message = extract_error_message_from_response(response)
+      end
+
       if trackable_request?(model_name)
         add_event({
           type: "http_request",
@@ -28,6 +33,7 @@ module EzlogsRubyAgent
           duration: (end_time - start_time).to_f,
           correlation_id: correlation_id,
           resource_id: resource_id,
+          error_message: error_message,
           user_agent: env["HTTP_USER_AGENT"],
           ip_address: env["REMOTE_ADDR"],
           timestamp: Time.current
@@ -57,6 +63,17 @@ module EzlogsRubyAgent
       variables = body["variables"] || {}
 
       variables["id"]
+    end
+
+    def extract_error_message_from_response(response)
+      response_body = response.body.join
+      begin
+        error_details = JSON.parse(response_body)
+        error_message = error_details["error"] || error_details["message"] || "Unknown error"
+      rescue JSON::ParserError
+        error_message = response_body
+      end
+      error_message
     end
 
     def extract_model_name(env)
