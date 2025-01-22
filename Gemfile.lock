@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    ezlogs_ruby_agent (0.1.17)
+    ezlogs_ruby_agent (0.1.18)
 
 GEM
   remote: https://rubygems.org/

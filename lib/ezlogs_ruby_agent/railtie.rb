@@ -9,6 +9,11 @@ module EzlogsRubyAgent
   class Railtie < ::Rails::Railtie
     initializer "ezlogs_ruby_agent.configure" do |app|
       EzlogsRubyAgent.configure do |config|
+        config.capture_http = true
+        config.capture_callbacks = true
+        config.capture_jobs = true
+        config.models_to_track = [] # Track all models if empty
+        config.exclude_models = []  # Exclude specific models
       end
     end
 
