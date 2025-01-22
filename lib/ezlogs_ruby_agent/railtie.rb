@@ -6,15 +6,15 @@ require 'ezlogs_ruby_agent/sidekiq_job_tracker'
 
 module EzlogsRubyAgent
   class Railtie < ::Rails::Railtie
-    initializer "ezlogs_ruby_agent.configure" do |app|
-      EzlogsRubyAgent.configure do |config|
-        config.capture_http = true
-        config.capture_callbacks = true
-        config.capture_jobs = true
-        config.models_to_track = [] # Track all models if empty
-        config.exclude_models = []  # Exclude specific models
-      end
-    end
+    # initializer "ezlogs_ruby_agent.configure" do |app|
+    #   EzlogsRubyAgent.configure do |config|
+    #     config.capture_http = true
+    #     config.capture_callbacks = true
+    #     config.capture_jobs = true
+    #     config.models_to_track = [] # Track all models if empty
+    #     config.exclude_models = []  # Exclude specific models
+    #   end
+    # end
 
     initializer "ezlogs_ruby_agent.insert_middleware", before: :build_middleware_stack do |app|
       app.middleware.use EzlogsRubyAgent::HttpTracker if EzlogsRubyAgent.config.capture_http
