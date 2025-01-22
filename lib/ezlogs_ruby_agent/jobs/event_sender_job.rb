@@ -3,12 +3,8 @@ module EzlogsRubyAgent
     class EventSenderJob
       if defined?(Sidekiq)
         include Sidekiq::Job
-
-        sidekiq_options queue: -> { EzlogsRubyAgent.config.background_jobs_queue }
       else
         include ActiveJob::Base
-
-        queue_as { EzlogsRubyAgent.config.background_jobs_queue }
       end
 
       def perform(events)
