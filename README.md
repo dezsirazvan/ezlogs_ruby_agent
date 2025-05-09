@@ -1,7 +1,5 @@
 # EzlogsRubyAgent
 
-# Ezlogs Ruby Agent
-
 A zero-impact instrumentation gem for Rails apps.  
 Collects HTTP requests, ActiveRecord callbacks, and background job metrics—and ships them to a lightweight local agent for batching and delivery.
 
@@ -39,22 +37,47 @@ bundle install
  - **Install & run the local Go agent**  
    Follow the Go agent README to install the standalone binary and start it as a service on port 9000.
  - **Configure the gem**  
-   Create config/initializers/ezlogs_ruby_agent.rb:
+   Create ```config/initializers/ezlogs_ruby_agent.rb```
+   ```ruby
+   EzlogsRubyAgent.configure do |c|
+    # What to capture
+    c.capture_http        = true
+    c.capture_callbacks   = true
+    c.capture_jobs        = true
 
+    # Optional: restrict to certain models or jobs
+    c.resources_to_track  = ['User', 'order']
+    c.exclude_resources   = ['Admin']
+
+    # How to extract "actor" (current user)
+    c.actor_extractor     = ->(context) { context.current_user&.id }
+
+    # Local agent settings
+    c.agent_host          = ENV.fetch('EZLOGS_AGENT_HOST', '127.0.0.1')
+    c.agent_port          = ENV.fetch('EZLOGS_AGENT_PORT', 9000).to_i
+    c.flush_interval      = 1.0        # seconds
+    c.max_buffer_size     = 5_000      # events
+   end
+   ```
+  - **Restart your Rails app**  
+    The Railtie will automatically insert the HTTP middleware and include the AR and Job trackers.
 
 ## Usage
 
-TODO: Write usage instructions here
+Events flow through your system like this:  
+[Your App Threads] ──log(event)──▶ [EventWriter Queue] ──(batch TCP)──▶ [Local Go Agent]
+                                          │
+                                          ▼ (background, non-blocking)
+                        
+[Local Go Agent] ──(HTTP POST with API key)──▶ [EZLogs Remote Collector API]
 
-## Development
-
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake spec` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
-
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+- **Your application** calls EzlogsRubyAgent.writer.log(event_hash) in the background.  
+- **EventWriter** buffers and TCP-sends them to ```127.0.0.1:9000``` without blocking. 
+- **Go agent** receives, batches, and forwards via HTTPS to your collector endpoint using your API key.
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/ezlogs_ruby_agent.
+We welcome bug reports and PRs to make Ezlogs even better!
 
 ## License
 
