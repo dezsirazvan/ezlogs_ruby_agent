@@ -31,7 +31,7 @@ module EzlogsRubyAgent
           correlation_id
         )
 
-        EzlogsRubyAgent::EventWriter.write_event_to_log(event_data)
+        EzlogsRubyAgent.writer.log(event_data)
       end
     end
 

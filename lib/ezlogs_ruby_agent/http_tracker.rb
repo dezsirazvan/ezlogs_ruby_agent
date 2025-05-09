@@ -42,7 +42,7 @@ module EzlogsRubyAgent
           duration: (end_time - start_time).to_f
         }
 
-        EzlogsRubyAgent::EventWriter.write_event_to_log(event_data)
+        EzlogsRubyAgent.writer.log(event_data)
       end
 
       [status, headers, response]

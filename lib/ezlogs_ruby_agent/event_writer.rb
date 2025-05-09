@@ -3,16 +3,17 @@ require 'json'
 
 module EzlogsRubyAgent
   class EventWriter
-    FLUSH_INTERVAL = EzlogsRubyAgent.config.flush_interval || 1.0
-    MAX_BUFFER     = EzlogsRubyAgent.config.max_buffer_size || 5_000
-
-    def initialize(host:, port:)
-      @host   = host
-      @port   = port
-      @queue  = SizedQueue.new(MAX_BUFFER)
+    def initialize
+      config = EzlogsRubyAgent.config
+      @host           = config.agent_host
+      @port           = config.agent_port
+      @flush_interval = config.flush_interval
+      @max_buffer     = config.max_buffer_size
+      @queue          = SizedQueue.new(@max_buffer)
       start_writer_thread
     end
 
+    # thread-safe enqueue
     def log(event_hash)
       @queue << event_hash
     rescue ThreadError
@@ -26,7 +27,7 @@ module EzlogsRubyAgent
         loop do
           batch = drain_batch
           send_batch(batch) unless batch.empty?
-          sleep FLUSH_INTERVAL
+          sleep @flush_interval
         end
       end
 
@@ -35,13 +36,13 @@ module EzlogsRubyAgent
 
     def drain_batch
       events = []
-      events << @queue.pop(true) while events.size < MAX_BUFFER
+      events << @queue.pop(true) while events.size < @max_buffer
     rescue ThreadError
       events
     end
 
     def send_batch(events)
-      payload = events.to_json
+      payload = JSON.generate(events)
       TCPSocket.open(@host, @port) do |sock|
         sock.write(payload)
         sock.flush

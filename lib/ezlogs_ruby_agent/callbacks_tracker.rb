@@ -37,9 +37,8 @@ module EzlogsRubyAgent
 
     def log_event(action, changes)
       event_data = build_event_data(action, changes)
-      
 
-      # call something here with the data
+      EzlogsRubyAgent.writer.log(event_data)
     end
 
     def build_event_data(action, changes)
