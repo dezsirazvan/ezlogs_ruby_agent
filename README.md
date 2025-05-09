@@ -36,7 +36,11 @@ bundle install
 
 
 ## Setup
-1. Install & run the local Go agent
+ - **Install & run the local Go agent**
+    Follow the Go agent README to install the standalone binary and start it as a service on port 9000.
+ - **Configure the gem**
+    Create config/initializers/ezlogs_ruby_agent.rb:
+
 
 ## Usage
 
