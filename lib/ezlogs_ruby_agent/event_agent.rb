@@ -19,6 +19,16 @@ module EzlogsRubyAgent
       File.write(PROCESSED_EVENT_FILE, JSON.pretty_generate(PROCESSED_EVENT_IDS.to_a))
     end
 
+    # This starts the agent in a background thread.
+    def self.start
+      Thread.new do
+        loop do
+          read_and_process_events
+          sleep(5) # Sleep for 5 seconds before checking again
+        end
+      end
+    end
+
     def self.read_and_process_events
       load_processed_event_ids
 
@@ -67,3 +77,5 @@ module EzlogsRubyAgent
     end
   end
 end
+
+EzlogsRubyAgent::EventAgent.start
