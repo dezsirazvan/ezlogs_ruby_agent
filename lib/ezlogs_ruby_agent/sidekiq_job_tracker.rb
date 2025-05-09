@@ -1,3 +1,6 @@
+require 'ezlogs_ruby_agent/event_writer'
+require 'ezlogs_ruby_agent/actor_extractor'
+
 module EzlogsRubyAgent
   class SidekiqJobTracker
     def call(worker, job, _queue)
