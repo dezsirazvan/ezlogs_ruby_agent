@@ -73,7 +73,7 @@ bundle install
 
 - **Your application** calls EzlogsRubyAgent.writer.log(event_hash) in the background.  
 - **EventWriter** buffers and TCP-sends them to ```127.0.0.1:9000``` without blocking. 
-- **Go agent** receives, batches, and forwards via HTTPS to your collector endpoint using your API key.
+- **Go agent** receives, batches, and forwards via HTTPS to EZLogs collector endpoint using your API key.
 
 ## Contributing
 
