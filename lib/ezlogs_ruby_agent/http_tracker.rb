@@ -1,5 +1,7 @@
 require 'rack'
 require 'active_support/all'
+require 'ezlogs_ruby_agent/event_writer'
+require 'ezlogs_ruby_agent/actor_extractor'
 
 module EzlogsRubyAgent
   class HttpTracker
@@ -9,38 +11,48 @@ module EzlogsRubyAgent
 
     def call(env)
       start_time = Time.current
+      correlation_id = extract_correlation_id(env)
       resource_id = extract_resource_id(env)
 
       status, headers, response = @app.call(env)
       end_time = Time.current
 
       resource_name = extract_resource_name(env)
-
-      error_message = nil
-      if status.to_s.start_with?('4') || status.to_s.start_with?('5')
-        error_message = extract_error_message_from_response(response)
-      end
+      error_message = extract_error_message_from_response(response) if status.to_s.start_with?('4', '5')
 
       if trackable_request?(resource_name)
-        add_event({
-          type: "http_request",
-          method: env["REQUEST_METHOD"],
-          path: env["PATH_INFO"],
-          params: parse_params(env),
-          status: status,
-          duration: (end_time - start_time).to_f,
+        event_data = {
+          event_id: SecureRandom.uuid,
+          correlation_id: correlation_id,
+          event_type: "http_request",
+          resource: resource_name,
           resource_id: resource_id,
-          error_message: error_message,
-          user_agent: env["HTTP_USER_AGENT"],
-          ip_address: env["REMOTE_ADDR"],
-          timestamp: Time.current
-        })
+          action: env["REQUEST_METHOD"],
+          actor: extract_actor(env),
+          timestamp: Time.current.to_s,
+          metadata: {
+            "path" => env["PATH_INFO"],
+            "params" => parse_params(env),
+            "status" => status,
+            "duration" => (end_time - start_time).to_f,
+            "user_agent" => env["HTTP_USER_AGENT"],
+            "ip_address" => env["REMOTE_ADDR"],
+            "error_message" => error_message
+          },
+          duration: (end_time - start_time).to_f
+        }
+
+        EzlogsRubyAgent::EventWriter.write_event_to_log(event_data)
       end
 
       [status, headers, response]
     end
 
     private
+
+    def extract_correlation_id(env)
+      env["HTTP_X_CORRELATION_ID"] || Thread.current[:correlation_id] || SecureRandom.uuid
+    end
 
     def extract_resource_id(env)
       if env["PATH_INFO"].include?("graphql")
@@ -67,7 +79,6 @@ module EzlogsRubyAgent
 
       begin
         response_body = response.body
-
         error_details = JSON.parse(response_body)
         error_message = error_details["error"] || error_details["message"] || "Unknown error"
       rescue JSON::ParserError
@@ -79,6 +90,10 @@ module EzlogsRubyAgent
     def extract_resource_name(env)
       path_parts = env["PATH_INFO"].split("/")
       path_parts[1].singularize if path_parts.size > 1
+    end
+
+    def extract_actor(env)
+      ActorExtractor.extract_actor(env)
     end
 
     def parse_params(env)
@@ -96,9 +111,6 @@ module EzlogsRubyAgent
         config.resources_to_track.map(&:downcase).include?(resource_name.downcase)
       ) &&
         !config.exclude_resources.map(&:downcase).include?(resource_name.downcase)
-    end
-
-    def add_event(event_data)
     end
   end
 end

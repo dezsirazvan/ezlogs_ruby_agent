@@ -1,5 +1,5 @@
-require "ezlogs_ruby_agent/event_writer"
-
+require 'ezlogs_ruby_agent/event_writer'
+require 'ezlogs_ruby_agent/actor_extractor'
 module EzlogsRubyAgent
   module CallbacksTracker
     extend ActiveSupport::Concern
