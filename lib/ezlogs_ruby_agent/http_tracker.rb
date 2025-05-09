@@ -1,6 +1,5 @@
 require 'rack'
 require 'active_support/all'
-require 'ezlogs_ruby_agent/event_queue'
 
 module EzlogsRubyAgent
   class HttpTracker
@@ -93,7 +92,7 @@ module EzlogsRubyAgent
 
       config = EzlogsRubyAgent.config
       (
-        config.resources_to_track.empty? || 
+        config.resources_to_track.empty? ||
         config.resources_to_track.map(&:downcase).include?(resource_name.downcase)
       ) &&
         !config.exclude_resources.map(&:downcase).include?(resource_name.downcase)

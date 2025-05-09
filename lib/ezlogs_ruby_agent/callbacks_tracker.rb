@@ -14,11 +14,11 @@ module EzlogsRubyAgent
       config = EzlogsRubyAgent.config
       resource_name = self.class.name
 
-      (
-        config.resources_to_track.empty? || 
-        config.resources_to_track.map(&:downcase).include?(resource_name.downcase)
-      ) &&
-        !config.exclude_resources.include?(resource_name.downcase)
+      resource_inclusion = config.resources_to_track.empty? ||
+                           config.resources_to_track.any? { |resource| resource.match?(resource_name) }
+      resource_exclusion = config.exclude_resources.any? { |resource| resource.match?(resource_name) }
+
+      resource_inclusion && !resource_exclusion
     end
 
     def log_create_event
@@ -34,16 +34,21 @@ module EzlogsRubyAgent
     end
 
     def log_event(action, changes)
-      # resource_id = id
+      event_data = build_event_data(action, changes)
+      EzlogsRubyAgent::EventWriter.write_event_to_log(event_data)
+    end
 
-      # EzlogsRubyAgent::EventQueue.instance.add({
-      #   type: "resource_callback",
-      #   action: action,
-      #   resource: self.class.name,
-      #   changes: changes,
-      #   resource_id: resource_id,
-      #   timestamp: Time.current
-      # })
+    def build_event_data(action, changes)
+      {
+        event_id: SecureRandom.uuid,
+        correlation_id: Thread.current[:correlation_id] || SecureRandom.uuid,
+        event_type: "resource_callback",
+        resource: self.class.name,
+        action: action,
+        actor: ActorExtractor.extract_actor(self),
+        timestamp: Time.current,
+        metadata: changes
+      }
     end
   end
 end

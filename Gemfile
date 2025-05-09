@@ -10,3 +10,5 @@ gem "rspec", "~> 3.0"
 gem 'rubocop', require: false
 
 gem 'rails', '~> 5.0'
+
+gem 'google-protobuf', '~> 3.19'

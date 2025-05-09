@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package ezlogs;
+
+message Event {
+  string event_id = 1;         // Unique ID for the event
+  string correlation_id = 2;   // ID to group related events (e.g., all events related to a single user action)
+  string event_type = 3;       // Type of event (e.g., "http_request", "model_update", "job_start")
+  string resource = 4;         // The resource affected (e.g., "User", "Order")
+  string action = 5;           // Action performed (e.g., "create", "update", "delete")
+  string actor = 6;            // The actor responsible for the event (e.g., user ID or system service)
+  string timestamp = 7;        // Timestamp of the event
+  map<string, string> metadata = 8;  // Additional data (e.g., params, changes made)
+  string error_message = 9;    // Error message if applicable (for failed events)
+  double duration = 10;        // Duration of the event (e.g., HTTP request time, job execution time)
+}
