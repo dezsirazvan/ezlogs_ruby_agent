@@ -1,20 +1,42 @@
 # EzlogsRubyAgent
 
-TODO: Delete this and the text below, and describe your gem
+# Ezlogs Ruby Agent
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/ezlogs_ruby_agent`. To experiment with that code, run `bin/console` for an interactive prompt.
+A zero-impact instrumentation gem for Rails apps.  
+Collects HTTP requests, ActiveRecord callbacks, and background job metrics—and ships them to a lightweight local agent for batching and delivery.
+
+## Features
+
+- **HTTP Tracking**  
+  Instruments every Rack request: path, params, status, duration, error messages.
+
+- **ActiveRecord Callbacks**  
+  Captures `create`, `update`, and `destroy` on your models (configurable by resource).
+
+- **Background Job Tracking**  
+  Supports ActiveJob and Sidekiq for job start, success, failure, duration, and arguments.
+
+- **In-Process, Non-Blocking Sender**  
+  Events are enqueued in memory and sent over TCP in the background—no delays in your web or job threads.
+
+- **Pluggable Actor Extraction**  
+  Define how to extract “who” performed each action (e.g. current user).
+
+- **Simple Configuration**  
+  Enable or disable any capture, whitelist or blacklist resources, and tune buffer sizes and intervals.
 
 ## Installation
 
-TODO: Replace `UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG` with your gem name right after releasing it to RubyGems.org. Please do not do it earlier due to security reasons. Alternatively, replace this section with instructions to install your gem from git if you don't plan to release to RubyGems.org.
+Add to your Gemfile:
 
-Install the gem and add to the application's Gemfile by executing:
+```ruby
+gem 'ezlogs_ruby_agent'
+bundle install
+```
 
-    $ bundle add UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
 
-If bundler is not being used to manage dependencies, install the gem by executing:
-
-    $ gem install UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
+## Setup
+1. Install & run the local Go agent
 
 ## Usage
 
