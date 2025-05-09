@@ -64,7 +64,7 @@ bundle install
 
 ## Usage
 
-Events flow through your system like this:  
+**Events flow through your system like this:**  
 [Your App Threads] ──log(event)──▶ [EventWriter Queue] ──(batch TCP)──▶ [Local Go Agent]
                                           │
                                           ▼ (background, non-blocking)
