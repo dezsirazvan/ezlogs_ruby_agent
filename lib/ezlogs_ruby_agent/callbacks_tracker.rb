@@ -1,5 +1,3 @@
-require 'ezlogs_ruby_agent/event_queue'
-
 module EzlogsRubyAgent
   module CallbacksTracker
     extend ActiveSupport::Concern
@@ -36,20 +34,16 @@ module EzlogsRubyAgent
     end
 
     def log_event(action, changes)
-      resource_id = id
-      correlation_id = Thread.current[:correlation_id] || SecureRandom.uuid
-      actor = EzlogsRubyAgent::ActorExtractor.extract_actor
+      # resource_id = id
 
-      EzlogsRubyAgent::EventQueue.instance.add({
-        type: "resource_callback",
-        action: action,
-        resource: self.class.name,
-        changes: changes,
-        correlation_id: correlation_id,
-        resource_id: resource_id,
-        actor: actor,
-        timestamp: Time.current
-      })
+      # EzlogsRubyAgent::EventQueue.instance.add({
+      #   type: "resource_callback",
+      #   action: action,
+      #   resource: self.class.name,
+      #   changes: changes,
+      #   resource_id: resource_id,
+      #   timestamp: Time.current
+      # })
     end
   end
 end

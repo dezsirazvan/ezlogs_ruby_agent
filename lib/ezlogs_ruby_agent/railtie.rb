@@ -27,9 +27,6 @@ module EzlogsRubyAgent
           config.server_middleware do |chain|
             chain.add EzlogsRubyAgent::SidekiqJobTracker
           end
-          config.client_middleware do |chain|
-            chain.add EzlogsRubyAgent::JobEnqueueMiddleware
-          end
         end 
       end
     end

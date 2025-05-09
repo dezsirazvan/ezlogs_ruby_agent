@@ -1,17 +1,13 @@
-require 'ezlogs_ruby_agent/event_queue'
-
 module EzlogsRubyAgent
   module JobTracker
     def perform(*args)
       return unless trackable_job?
 
       start_time = Time.current
-      correlation_id = Thread.current[:correlation_id] || SecureRandom.uuid
       resource_id = extract_resource_id_from_args(args)
 
       super
 
-      actor = EzlogsRubyAgent::ActorExtractor.extract_actor
       end_time = Time.current
 
       add_event({
@@ -21,9 +17,7 @@ module EzlogsRubyAgent
         status: "completed",
         error_message: nil,
         duration: (end_time - start_time).to_f,
-        correlation_id: correlation_id,
         resource_id: resource_id,
-        actor: actor,
         timestamp: Time.current
       })
     rescue => e
@@ -33,9 +27,7 @@ module EzlogsRubyAgent
         arguments: args,
         status: "failed",
         error_message: e.message,
-        correlation_id: correlation_id,
         resource_id: resource_id,
-        actor: actor,
         timestamp: Time.current
       })
       raise e
@@ -59,7 +51,6 @@ module EzlogsRubyAgent
     end
 
     def add_event(event_data)
-      EzlogsRubyAgent::EventQueue.instance.add(event_data)
     end
   end
 end
