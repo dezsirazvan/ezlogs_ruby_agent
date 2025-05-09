@@ -19,13 +19,12 @@ module EzlogsRubyAgent
       File.write(PROCESSED_EVENT_FILE, JSON.pretty_generate(PROCESSED_EVENT_IDS.to_a))
     end
 
-    # This starts the agent in a background thread.
     def self.start
-      Thread.new do
-        loop do
-          read_and_process_events
-          sleep(5) # Sleep for 5 seconds before checking again
-        end
+      loop do
+        puts 'Starting event processing...'
+
+        read_and_process_events
+        sleep(5)
       end
     end
 
@@ -50,7 +49,12 @@ module EzlogsRubyAgent
     end
 
     def self.process_event(event_data)
-      event = Ezlogs::Event.decode(event_data)
+      begin
+        event = Ezlogs::Event.decode(event_data)
+      rescue Google::Protobuf::ParseError => e
+        puts "Failed to parse event data: #{e.message}"
+        return
+      end
 
       return if PROCESSED_EVENT_IDS.include?(event.event_id)
 
