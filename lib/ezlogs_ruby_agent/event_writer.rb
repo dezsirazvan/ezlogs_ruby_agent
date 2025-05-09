@@ -1,57 +1,60 @@
-require 'ezlogs_ruby_agent/protobuf/event_pb'
+require 'socket'
+require 'json'
 
 module EzlogsRubyAgent
-  module EventWriter
-    LOG_FILE_PATH = 'events.log'.freeze
-    MAX_LOG_SIZE = 10 * 1024 * 1024 # 10 MB
+  class EventWriter
+    FLUSH_INTERVAL = EzlogsRubyAgent.config.flush_interval || 1.0
+    MAX_BUFFER     = EzlogsRubyAgent.config.max_buffer_size || 5_000
 
-    def self.write_event_to_log(event_data)
-      serialized_event = serialize_event(event_data)
+    def initialize(host:, port:)
+      @host   = host
+      @port   = port
+      @queue  = SizedQueue.new(MAX_BUFFER)
+      start_writer_thread
+    end
 
-      Thread.new do
-        rotate_log_file_if_needed
+    def log(event_hash)
+      @queue << event_hash
+    rescue ThreadError
+      warn '[Ezlogs] buffer full, dropping event'
+    end
 
-        File.open(LOG_FILE_PATH, 'a') do |file|
-          file.write(serialized_event)
+    private
+
+    def start_writer_thread
+      @writer = Thread.new do
+        loop do
+          batch = drain_batch
+          send_batch(batch) unless batch.empty?
+          sleep FLUSH_INTERVAL
         end
-      rescue StandardError => e
-        Rails.logger.error("Failed to write event to log: #{e.message}")
-      end
-    end
-
-    def self.serialize_event(event_data)
-      event = Ezlogs::Event.new(
-        event_id: event_data[:event_id],
-        correlation_id: event_data[:correlation_id],
-        event_type: event_data[:event_type],
-        resource: event_data[:resource],
-        action: event_data[:action],
-        actor: event_data[:actor],
-        timestamp: event_data[:timestamp],
-        metadata: event_data[:metadata]
-      )
-
-      event.to_proto
-    end
-
-    def self.rotate_log_file_if_needed
-      return unless File.exist?(LOG_FILE_PATH) && File.size(LOG_FILE_PATH) > MAX_LOG_SIZE
-
-      rotate_log_files
-    end
-
-    def self.rotate_log_files
-      log_files = Dir.glob('events.log*').sort_by { |f| File.mtime(f) }
-
-      if log_files.size >= 5
-        File.delete(log_files.first) # Remove the oldest log file
       end
 
-      return unless File.exist?(LOG_FILE_PATH)
+      at_exit { flush_on_exit }
+    end
 
-      timestamp = Time.now.strftime('%Y%m%d%H%M%S')
-      new_log_file = "events.log.#{timestamp}"
-      File.rename(LOG_FILE_PATH, new_log_file)
+    def drain_batch
+      events = []
+      events << @queue.pop(true) while events.size < MAX_BUFFER
+    rescue ThreadError
+      events
+    end
+
+    def send_batch(events)
+      payload = events.to_json
+      TCPSocket.open(@host, @port) do |sock|
+        sock.write(payload)
+        sock.flush
+      end
+    rescue StandardError => e
+      warn "[Ezlogs] failed to send to agent: #{e.class}: #{e.message}"
+    end
+
+    def flush_on_exit
+      until @queue.empty?
+        batch = drain_batch
+        send_batch(batch) unless batch.empty?
+      end
     end
   end
 end
