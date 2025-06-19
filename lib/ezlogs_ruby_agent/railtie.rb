@@ -22,12 +22,18 @@ module EzlogsRubyAgent
     end
 
     initializer "ezlogs_ruby_agent.configure_sidekiq" do
-      if EzlogsRubyAgent.config.capture_jobs
+      if EzlogsRubyAgent.config.capture_jobs && defined?(Sidekiq)
         Sidekiq.configure_server do |config|
           config.server_middleware do |chain|
             chain.add EzlogsRubyAgent::SidekiqJobTracker
           end
-        end 
+        end
+
+        Sidekiq.configure_client do |config|
+          config.client_middleware do |chain|
+            chain.add EzlogsRubyAgent::JobEnqueueMiddleware
+          end
+        end
       end
     end
 

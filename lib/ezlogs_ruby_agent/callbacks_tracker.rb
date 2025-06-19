@@ -1,5 +1,7 @@
 require 'ezlogs_ruby_agent/event_writer'
 require 'ezlogs_ruby_agent/actor_extractor'
+require 'ezlogs_ruby_agent/universal_event'
+
 module EzlogsRubyAgent
   module CallbacksTracker
     extend ActiveSupport::Concern
@@ -36,22 +38,19 @@ module EzlogsRubyAgent
     end
 
     def log_event(action, changes)
-      event_data = build_event_data(action, changes)
-
-      EzlogsRubyAgent.writer.log(event_data)
-    end
-
-    def build_event_data(action, changes)
-      {
-        event_id: SecureRandom.uuid,
-        correlation_id: Thread.current[:correlation_id] || SecureRandom.uuid,
+      event = UniversalEvent.new(
         event_type: "resource_callback",
         resource: self.class.name,
+        resource_id: respond_to?(:id) ? id : nil,
         action: action,
         actor: ActorExtractor.extract_actor(self),
-        timestamp: Time.current,
+        timestamp: Time.now,
         metadata: changes
-      }
+      )
+
+      EzlogsRubyAgent.writer.log(event.to_h)
+    rescue StandardError => e
+      warn "[Ezlogs] failed to create callback event: #{e.message}"
     end
   end
 end

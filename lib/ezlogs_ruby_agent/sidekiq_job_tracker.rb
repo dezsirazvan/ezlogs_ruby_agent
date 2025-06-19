@@ -1,5 +1,6 @@
 require 'ezlogs_ruby_agent/event_writer'
 require 'ezlogs_ruby_agent/actor_extractor'
+require 'ezlogs_ruby_agent/universal_event'
 
 module EzlogsRubyAgent
   class SidekiqJobTracker
@@ -9,7 +10,7 @@ module EzlogsRubyAgent
       correlation_id = job['correlation_id'] || Thread.current[:correlation_id] || SecureRandom.uuid
       return yield unless trackable_job?(job_name, config)
 
-      start_time = Time.current
+      start_time = Time.now
       resource_id = extract_resource_id_from_job(job)
 
       begin
@@ -21,17 +22,30 @@ module EzlogsRubyAgent
         error_message = e.message
         raise e
       ensure
-        end_time = Time.current
-        event_data = build_event_data(
-          job_name, job['args'],
-          status,
-          error_message,
-          (end_time - start_time).to_f,
-          resource_id,
-          correlation_id
-        )
+        end_time = Time.now
 
-        EzlogsRubyAgent.writer.log(event_data)
+        begin
+          event = UniversalEvent.new(
+            event_type: 'background_job',
+            resource: 'Job',
+            resource_id: resource_id,
+            action: job_name,
+            actor: ActorExtractor.extract_actor(nil),
+            timestamp: start_time,
+            metadata: {
+              'job_name' => job_name,
+              'arguments' => job['args'],
+              'status' => status,
+              'error_message' => error_message,
+              'duration' => (end_time - start_time).to_f
+            },
+            duration: (end_time - start_time).to_f
+          )
+
+          EzlogsRubyAgent.writer.log(event.to_h)
+        rescue StandardError => e
+          warn "[Ezlogs] failed to create Sidekiq job event: #{e.message}"
+        end
       end
     end
 
@@ -51,27 +65,6 @@ module EzlogsRubyAgent
       end
 
       resource_match && !excluded_match
-    end
-
-    def build_event_data(job_name, args, status, error_message, duration, resource_id, correlation_id) # rubocop:disable Metrics/ParameterLists
-      {
-        event_id: SecureRandom.uuid,
-        correlation_id: correlation_id,
-        event_type: 'background_job',
-        resource: 'Job',
-        action: job_name,
-        actor: ActorExtractor.extract_actor(nil),
-        timestamp: Time.current.to_s,
-        metadata: {
-          'job_name' => job_name,
-          'arguments' => args,
-          'status' => status,
-          'error_message' => error_message,
-          'duration' => duration
-        },
-        resource_id: resource_id,
-        duration: duration
-      }
     end
   end
 end

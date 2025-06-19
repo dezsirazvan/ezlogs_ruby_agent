@@ -1,0 +1,188 @@
+🚀 EZLogs Ruby Agent - AI Development Rules
+🎯 Project Mission
+You are building the world's most elegant Rails event tracking gem. This will become the foundation for AI-powered business insights and the industry standard for event collection.
+💎 Code Excellence Standards
+Ruby Mastery
+
+Write beautiful, idiomatic Ruby that makes other developers smile
+Use keyword arguments for all public APIs
+Prefer composition over inheritance
+Keep methods focused and under 15 lines
+Use descriptive, intention-revealing names
+Follow Ruby community style guide religiously
+
+Architecture Excellence
+
+Single Responsibility Principle - every class has one clear job
+Dependency injection for maximum testability
+Immutable configuration after initialization
+Thread-safe operations throughout
+Fail gracefully - NEVER crash the host Rails application
+
+Testing Religion
+
+Test-Driven Development - tests come first, always
+100% test coverage - no exceptions ever
+Test behavior, not implementation details
+Mock external dependencies (network, file system)
+Test both success and failure scenarios
+Include performance regression tests
+
+🔧 Rails Integration Excellence
+Rails Native Feel
+
+Use Rails conventions and patterns naturally
+Integrate cleanly with Rails application lifecycle
+Support Rails 5.0+ with graceful compatibility
+Leverage ActiveSupport utilities appropriately
+Follow Rails plugin and gem best practices
+
+Performance Obsession
+
+Sub-1ms overhead per event (measure and verify)
+Use background threads for all I/O operations
+Implement smart buffering and batching
+Monitor memory usage and prevent leaks
+Benchmark critical performance paths continuously
+
+🛡️ Security & Production Excellence
+Security First
+
+Never log sensitive data by default
+Implement automatic field sanitization
+Validate all external inputs rigorously
+Use cryptographically secure random for IDs
+Follow principle of least privilege always
+
+Production Hardening
+
+Graceful degradation on any failure
+Circuit breaker patterns for external dependencies
+Comprehensive error handling with meaningful messages
+Resource limits to prevent DoS
+Health monitoring and self-diagnostics
+
+📚 Documentation & Developer Experience
+Documentation Excellence
+
+YARD documentation for every public method
+Include realistic usage examples in all docstrings
+Clear parameter types and descriptions
+Document all possible exceptions
+Maintain comprehensive README with current examples
+
+Developer Happiness
+
+Zero-config setup that "just works"
+Rich debugging tools and clear error messages
+Intuitive configuration API
+Comprehensive test helpers
+Beautiful, discoverable public API
+
+🎨 Code Organization & Structure
+Clean Architecture
+
+Logical file and directory organization
+Clear separation between public API and internals
+Focused modules with single concerns
+Clean boundaries between components
+Consistent naming patterns throughout
+
+Git & Commits
+
+Atomic commits with descriptive messages
+Reference task numbers when applicable
+Squash related commits before review
+Keep commit history clean and readable
+Tag releases with semantic versioning
+
+🧪 Testing Standards
+RSpec Excellence
+
+Descriptive test names that tell a story
+Logical grouping with describe/context blocks
+Use let() for clean test data setup
+Mock time-dependent operations consistently
+Test edge cases and error conditions thoroughly
+Validate thread safety where applicable
+
+Test Categories
+
+Unit Tests: Individual class behavior
+Integration Tests: Cross-component interaction
+Performance Tests: Latency and memory validation
+Security Tests: PII protection verification
+Rails Tests: Real application scenarios
+
+🚀 AI Collaboration Guidelines
+Context Awareness
+
+Always read current task in ai_tasks/active/
+Reference instructions.md for project vision
+Understand the bigger picture before coding
+Ask clarifying questions for ambiguous requirements
+
+Implementation Approach
+
+Start with failing tests that define the interface
+Implement incrementally with frequent validation
+Commit logical chunks with clear messages
+Refactor continuously for elegance and clarity
+
+Quality Focus
+
+Measure performance of critical paths
+Validate security requirements thoroughly
+Test failure scenarios and edge cases
+Ensure backward compatibility unless explicitly changing
+
+⚡ Performance & Scalability
+Efficiency Requirements
+
+Event creation: < 1ms for 95th percentile
+Memory per event: < 5KB when serialized
+Concurrent throughput: > 10,000 events/second
+Zero memory leaks during continuous operation
+
+Resource Management
+
+Proper cleanup of threads and connections
+Intelligent buffering with size limits
+Compression for large payloads
+Connection pooling for network operations
+
+🔍 Error Handling Excellence
+Comprehensive Coverage
+
+Handle all possible exception scenarios
+Provide actionable error messages to developers
+Log errors appropriately without spamming
+Implement retry logic with exponential backoff
+Graceful fallback when external services fail
+
+User Experience
+
+Configuration errors fail fast with clear guidance
+Runtime errors never crash the host application
+Rich debugging information when requested
+Self-healing behavior where possible
+
+🌟 Success Criteria
+Quality Gates
+
+All tests pass with 100% coverage
+Performance benchmarks met or exceeded
+Zero RuboCop style violations
+Documentation complete and accurate
+Backward compatibility maintained
+
+Developer Experience
+
+Works perfectly with minimal configuration
+Intuitive API that feels "Rails-like"
+Rich debugging and troubleshooting capabilities
+Clear migration path for upgrades
+Comprehensive examples and tutorials
+
+Remember: We're building something that will delight developers and power the future of application observability. Every line of code should reflect that ambition.
+Make it beautiful. Make it fast. Make it bulletproof. Make it legendary. 🚀

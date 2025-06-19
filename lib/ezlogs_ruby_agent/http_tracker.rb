@@ -2,6 +2,7 @@ require 'rack'
 require 'active_support/all'
 require 'ezlogs_ruby_agent/event_writer'
 require 'ezlogs_ruby_agent/actor_extractor'
+require 'ezlogs_ruby_agent/universal_event'
 
 module EzlogsRubyAgent
   class HttpTracker
@@ -10,39 +11,41 @@ module EzlogsRubyAgent
     end
 
     def call(env)
-      start_time = Time.current
+      start_time = Time.now
       correlation_id = extract_correlation_id(env)
       resource_id = extract_resource_id(env)
 
       status, headers, response = @app.call(env)
-      end_time = Time.current
+      end_time = Time.now
 
       resource_name = extract_resource_name(env)
       error_message = extract_error_message_from_response(response) if status.to_s.start_with?('4', '5')
 
       if trackable_request?(resource_name)
-        event_data = {
-          event_id: SecureRandom.uuid,
-          correlation_id: correlation_id,
-          event_type: "http_request",
-          resource: resource_name,
-          resource_id: resource_id,
-          action: env["REQUEST_METHOD"],
-          actor: extract_actor(env),
-          timestamp: Time.current.to_s,
-          metadata: {
-            "path" => env["PATH_INFO"],
-            "params" => parse_params(env),
-            "status" => status,
-            "duration" => (end_time - start_time).to_f,
-            "user_agent" => env["HTTP_USER_AGENT"],
-            "ip_address" => env["REMOTE_ADDR"],
-            "error_message" => error_message
-          },
-          duration: (end_time - start_time).to_f
-        }
+        begin
+          event = UniversalEvent.new(
+            event_type: "http_request",
+            resource: resource_name,
+            resource_id: resource_id,
+            action: env["REQUEST_METHOD"],
+            actor: extract_actor(env),
+            timestamp: start_time,
+            metadata: {
+              "path" => env["PATH_INFO"],
+              "params" => parse_params(env),
+              "status" => status,
+              "duration" => (end_time - start_time).to_f,
+              "user_agent" => env["HTTP_USER_AGENT"],
+              "ip_address" => env["REMOTE_ADDR"],
+              "error_message" => error_message
+            },
+            duration: (end_time - start_time).to_f
+          )
 
-        EzlogsRubyAgent.writer.log(event_data)
+          EzlogsRubyAgent.writer.log(event.to_h)
+        rescue StandardError => e
+          warn "[Ezlogs] failed to create HTTP event: #{e.message}"
+        end
       end
 
       [status, headers, response]

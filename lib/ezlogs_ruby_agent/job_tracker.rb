@@ -1,5 +1,6 @@
 require 'ezlogs_ruby_agent/event_writer'
 require 'ezlogs_ruby_agent/actor_extractor'
+require 'ezlogs_ruby_agent/universal_event'
 
 module EzlogsRubyAgent
   module JobTracker
@@ -7,34 +8,58 @@ module EzlogsRubyAgent
       correlation_id = Thread.current[:correlation_id] || SecureRandom.uuid
       return unless trackable_job?
 
-      start_time = Time.current
+      start_time = Time.now
       resource_id = extract_resource_id_from_args(args)
 
       super
 
-      end_time = Time.current
+      end_time = Time.now
 
-      event_data = build_event_data(
-        "completed", 
-        nil, 
-        args, 
-        (end_time - start_time).to_f, 
-        resource_id, 
-        correlation_id
-      )
+      begin
+        event = UniversalEvent.new(
+          event_type: 'background_job',
+          resource: 'Job',
+          resource_id: resource_id,
+          action: self.class.name,
+          actor: ActorExtractor.extract_actor(nil),
+          timestamp: start_time,
+          metadata: {
+            "job_name" => self.class.name,
+            "arguments" => args,
+            "status" => "completed",
+            "error_message" => nil,
+            "duration" => (end_time - start_time).to_f
+          },
+          duration: (end_time - start_time).to_f
+        )
 
-      EzlogsRubyAgent.writer.log(event_data)
+        EzlogsRubyAgent.writer.log(event.to_h)
+      rescue StandardError => e
+        warn "[Ezlogs] failed to create job event: #{e.message}"
+      end
     rescue => e
-      event_data = build_event_data(
-        "failed", 
-        e.message, 
-        args, 
-        0, 
-        resource_id, 
-        correlation_id
-      )
+      begin
+        event = UniversalEvent.new(
+          event_type: 'background_job',
+          resource: 'Job',
+          resource_id: resource_id,
+          action: self.class.name,
+          actor: ActorExtractor.extract_actor(nil),
+          timestamp: start_time,
+          metadata: {
+            "job_name" => self.class.name,
+            "arguments" => args,
+            "status" => "failed",
+            "error_message" => e.message,
+            "duration" => 0
+          },
+          duration: 0
+        )
 
-      EzlogsRubyAgent::EventWriter.write_event_to_log(event_data)
+        EzlogsRubyAgent.writer.log(event.to_h)
+      rescue StandardError => log_error
+        warn "[Ezlogs] failed to create failed job event: #{log_error.message}"
+      end
       raise e
     end
 
@@ -55,27 +80,6 @@ module EzlogsRubyAgent
       excluded_match = config.exclude_resources.map(&:downcase).any? { |resource| job_name.include?(resource.downcase) }
 
       resource_match && !excluded_match
-    end
-
-    def build_event_data(status, error_message, args, duration, resource_id, correlation_id) # rubocop:disable Metrics/ParameterLists
-      {
-        event_id: SecureRandom.uuid,
-        correlation_id: correlation_id,
-        event_type: 'background_job',
-        resource: 'Job',
-        action: self.class.name,
-        actor: ActorExtractor.extract_actor(nil),
-        timestamp: Time.current.to_s,
-        metadata: {
-          "job_name" => self.class.name,
-          "arguments" => args,
-          "status" => status,
-          "error_message" => error_message,
-          "duration" => duration
-        },
-        resource_id: resource_id,
-        duration: duration
-      }
     end
   end
 end

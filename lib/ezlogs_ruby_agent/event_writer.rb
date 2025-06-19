@@ -5,11 +5,11 @@ module EzlogsRubyAgent
   class EventWriter
     def initialize
       config = EzlogsRubyAgent.config
-      @host           = config.agent_host
-      @port           = config.agent_port
       @flush_interval = config.flush_interval
-      @max_buffer     = config.max_buffer_size
-      @queue          = SizedQueue.new(@max_buffer)
+      @max_buffer = config.max_buffer_size
+      @queue = SizedQueue.new(@max_buffer)
+      @delivery_engine = EzlogsRubyAgent.delivery_engine
+      @event_processor = EzlogsRubyAgent.processor
       start_writer_thread
     end
 
@@ -42,13 +42,23 @@ module EzlogsRubyAgent
     end
 
     def send_batch(events)
-      payload = JSON.generate(events)
-      TCPSocket.open(@host, @port) do |sock|
-        sock.write(payload)
-        sock.flush
-      end
+      # Process each event through the event processor
+      processed_events = events.map do |event_data|
+        processed = @event_processor.process(event_data)
+        processed ? processed.to_h : nil
+      rescue StandardError => e
+        warn "[Ezlogs] failed to process event: #{e.message}"
+        nil
+      end.compact
+
+      return if processed_events.empty?
+
+      # Use the delivery engine to send the batch
+      result = @delivery_engine.deliver_batch(processed_events)
+
+      warn "[Ezlogs] failed to send batch: #{result.error}" unless result.success?
     rescue StandardError => e
-      warn "[Ezlogs] failed to send to agent: #{e.class}: #{e.message}"
+      warn "[Ezlogs] failed to send batch: #{e.class}: #{e.message}"
     end
 
     def flush_on_exit

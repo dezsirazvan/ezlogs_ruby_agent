@@ -1,0 +1,124 @@
+Build and release artifacts
+*.gem
+pkg/
+coverage/
+doc/
+.yardoc/
+_yardoc/
+Logs and temporary files
+*.log
+tmp/
+log/
+events.log
+processed_events.json
+OS and editor files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Environment and secrets
+.env
+.env.local
+.env.*.local
+.envrc
+config/secrets.yml
+.secrets
+Dependencies and caches
+vendor/bundle/
+node_modules/
+.bundle/
+.sass-cache/
+Ruby and Rails specific
+.rspec_status
+spec/reports/
+coverage/
+.byebug_history
+.ruby-version
+.rbenv-version
+.rvmrc
+Database files
+*.sqlite
+*.sqlite3
+*.db
+Test artifacts and coverage
+simplecov/
+coverage.data
+spec/examples.txt
+RuboCop cache
+.rubocop-*
+.rubocop_cache/
+YARD documentation cache
+.yardoc/
+doc/
+Bundler
+Gemfile.lock
+.bundle/
+vendor/
+AI task working files (preserve structure, ignore temp work)
+ai_tasks/active//work/
+ai_tasks/active//scratch/
+ai_tasks/active//notes.md
+ai_tasks/done//artifacts/
+Local configuration overrides
+.local_config.yml
+.dev_config.yml
+config/local.yml
+Performance and benchmark data
+benchmark/results/
+performance/reports/
+Large data files that might accumulate
+*.csv
+*.json
+*.dump
+*.backup
+MacOS specific
+.fseventsd/
+.TemporaryItems/
+.apdisk
+Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+Linux specific
+.directory
+*~
+JetBrains IDEs
+.idea/
+*.iml
+*.iws
+Sublime Text
+*.sublime-project
+*.sublime-workspace
+Atom
+.ftpconfig
+.sftpconfig
+VS Code
+.vscode/
+*.code-workspace
+Emacs
+~
+##
+/.emacs.desktop
+/.emacs.desktop.lock
+.elc
+auto-save-list
+tramp
+.#
+Vim
+[.]*.s[a-v][a-z]
+[.].sw[a-p]
+[.]s[a-rt-v][a-z]
+[.]ss[a-gi-z]
+[.]sw[a-p]
+Session.vim
+.netrwhist
+tags
+[.].un~
