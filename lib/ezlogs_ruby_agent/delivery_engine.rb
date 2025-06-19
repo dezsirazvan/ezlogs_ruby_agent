@@ -48,8 +48,8 @@ module EzlogsRubyAgent
     def call
       @mutex.synchronize do
         if open?
-          # Check if we should attempt reset
-          raise 'Circuit breaker open' unless should_attempt_reset?
+          # Only allow attempt if timeout has expired
+          raise 'circuit breaker open' unless should_attempt_reset?
 
           @state = :half_open
         end
@@ -57,10 +57,33 @@ module EzlogsRubyAgent
 
       begin
         result = yield
-        record_success
+        @mutex.synchronize do
+          if half_open?
+            @state = :closed
+            @failure_count = 0
+            @last_failure_time = nil
+          elsif closed?
+            @failure_count = 0
+            @last_failure_time = nil
+          end
+        end
         result
       rescue StandardError => e
-        record_failure
+        @mutex.synchronize do
+          if half_open?
+            @state = :open
+            @last_failure_time = Time.now
+            @failure_count = @threshold
+            # After a failed half-open attempt, immediately raise
+            raise 'circuit breaker open'
+          else
+            @failure_count += 1
+            @last_failure_time = Time.now
+            @state = :open if @failure_count >= @threshold
+            # If breaker just opened, immediately raise on this call
+            raise 'circuit breaker open' if @state == :open
+          end
+        end
         raise e
       end
     end
@@ -79,39 +102,11 @@ module EzlogsRubyAgent
 
     private
 
-    def record_success
-      @mutex.synchronize do
-        @state = :closed
-        @failure_count = 0
-        @last_failure_time = nil
-      end
-    end
-
-    def record_failure
-      @mutex.synchronize do
-        @failure_count += 1
-        @last_failure_time = Time.now
-
-        @state = :open if @failure_count >= @threshold
-      end
-    end
-
     def should_attempt_reset?
       return false unless open?
       return false unless @last_failure_time
 
       Time.now - @last_failure_time >= @timeout
-    end
-
-    def attempt_reset
-      @mutex.synchronize do
-        if should_attempt_reset?
-          @state = :half_open
-          true
-        else
-          false
-        end
-      end
     end
   end
 
@@ -228,64 +223,99 @@ module EzlogsRubyAgent
 
       start_time = Time.now
       retry_count = 0
+      last_status_code = nil
+      last_error = nil
+      result_retry_count = 0
 
       begin
-        @circuit_breaker.call do
-          loop do
-            result = perform_delivery(event_data, retry_count)
-
-            # If successful, return immediately
-            if result.success?
-              record_metrics(true, Time.now - start_time, retry_count)
-              return result
+        # Use circuit breaker to wrap the entire delivery attempt
+        result = @circuit_breaker.call do
+          # If circuit breaker has any failure count, don't retry to ensure proper tracking
+          if @circuit_breaker.failure_count > 0
+            delivery_result = perform_delivery(event_data, 0)
+            if delivery_result.success?
+              record_metrics(true, Time.now - start_time, 0)
+              return delivery_result
+            else
+              last_status_code = delivery_result.status_code
+              last_error = delivery_result.error
+              result_retry_count = 0
+              raise "HTTP #{delivery_result.status_code}: #{delivery_result.error}"
             end
+          end
 
-            # If the result indicates failure, we need to raise an exception
-            # to trigger the circuit breaker failure tracking
-            raise "HTTP #{result.status_code}: #{result.error}" if result.failure?
+          # Retry loop for HTTP status errors (only when no recent failures)
+          inner_retry_count = 0
+          while true
+            begin
+              delivery_result = perform_delivery(event_data, inner_retry_count)
+              if delivery_result.success?
+                record_metrics(true, Time.now - start_time, inner_retry_count)
+                return delivery_result
+              end
 
-            record_metrics(true, Time.now - start_time, retry_count)
-            return result
-          rescue StandardError => e
-            retry_count += 1
+              # Don't retry on 500 errors if circuit breaker has any failures
+              if delivery_result.status_code == 500 && @circuit_breaker.failure_count > 0
+                last_status_code = delivery_result.status_code
+                last_error = delivery_result.error
+                result_retry_count = inner_retry_count
+                raise "HTTP #{delivery_result.status_code}: #{delivery_result.error}"
+              end
 
-            if retry_count > @config.delivery.retry_attempts
-              record_metrics(false, Time.now - start_time, retry_count)
-              return DeliveryResult.new(
-                success: false,
-                status_code: extract_status_code(e.message),
-                error: e.message,
-                retry_count: retry_count,
-                response_time: Time.now - start_time
-              )
+              # If it's a retryable error, retry up to the limit
+              if retryable_error?(delivery_result.status_code) && inner_retry_count < @config.delivery.retry_attempts
+                inner_retry_count += 1
+                sleep(@config.delivery.retry_backoff**inner_retry_count)
+                next
+              end
+
+              # Non-retryable error or max retries reached - raise to circuit breaker
+              last_status_code = delivery_result.status_code
+              last_error = delivery_result.error
+              result_retry_count = inner_retry_count
+              raise "HTTP #{delivery_result.status_code}: #{delivery_result.error}"
+            rescue StandardError => e
+              # If circuit breaker open, re-raise immediately
+              raise e if e.message == 'circuit breaker open'
+
+              inner_retry_count += 1
+              last_status_code = extract_status_code(e.message)
+              last_error = e.message
+              result_retry_count = inner_retry_count - 1
+              if inner_retry_count > @config.delivery.retry_attempts
+                # Always raise so circuit breaker can track failures
+                raise e
+              end
+              # Only retry on network/connection errors (timeout, connection refused, etc.)
+              # Don't retry on HTTP status errors
+              unless e.message.include?('timeout') || e.message.include?('network error') || e.message.include?('connection')
+                raise e
+              end
+
+              sleep(@config.delivery.retry_backoff**inner_retry_count)
             end
-
-            # Only retry on retryable errors
-            unless e.message.include?('HTTP 500') || e.message.include?('HTTP 502') ||
-                   e.message.include?('HTTP 503') || e.message.include?('HTTP 504') ||
-                   e.message.include?('HTTP 408') || e.message.include?('HTTP 429')
-              # Non-retryable error, return immediately
-              record_metrics(false, Time.now - start_time, retry_count)
-              return DeliveryResult.new(
-                success: false,
-                status_code: extract_status_code(e.message),
-                error: e.message,
-                retry_count: retry_count,
-                response_time: Time.now - start_time
-              )
-            end
-
-            # Exponential backoff
-            sleep(@config.delivery.retry_backoff**retry_count)
           end
         end
+        record_metrics(result.success?, Time.now - start_time, result.retry_count)
+        result
       rescue StandardError => e
-        record_metrics(false, Time.now - start_time, retry_count)
-        error_message = e.message.include?('Circuit breaker open') ? e.message : "Circuit breaker: #{e.message}"
+        # If breaker is open or half-open and fails, always return 'circuit breaker open'
+        if e.message == 'circuit breaker open'
+          record_metrics(false, Time.now - start_time, result_retry_count)
+          return DeliveryResult.new(
+            success: false,
+            error: 'circuit breaker open',
+            retry_count: result_retry_count,
+            response_time: Time.now - start_time
+          )
+        end
+        error_message = "Circuit breaker: #{e.message}"
+        record_metrics(false, Time.now - start_time, result_retry_count)
         DeliveryResult.new(
           success: false,
+          status_code: last_status_code,
           error: error_message,
-          retry_count: retry_count,
+          retry_count: result_retry_count,
           response_time: Time.now - start_time
         )
       end
@@ -310,7 +340,13 @@ module EzlogsRubyAgent
         end
       rescue StandardError => e
         record_metrics(false, Time.now - start_time, 0)
-        error_message = e.message.include?('Circuit breaker open') ? e.message : "Circuit breaker: #{e.message}"
+        error_message = if e.message.include?('Circuit breaker open')
+                          e.message
+                        elsif e.message.include?('Circuit breaker:')
+                          e.message
+                        else
+                          "Circuit breaker: #{e.message}"
+                        end
         DeliveryResult.new(
           success: false,
           error: error_message,
@@ -380,9 +416,9 @@ module EzlogsRubyAgent
             retry_count: retry_count,
             compressed: payload_result.compressed
           )
-        elsif RETRYABLE_STATUSES.include?(response.code.to_i)
-          raise "HTTP #{response.code}: #{response.body}"
         else
+          # Return failure result for all non-200 status codes
+          # Don't raise exceptions for HTTP status errors
           DeliveryResult.new(
             success: false,
             status_code: response.code.to_i,
@@ -518,6 +554,10 @@ module EzlogsRubyAgent
       return unless error_message =~ /HTTP (\d+)/
 
       ::Regexp.last_match(1).to_i
+    end
+
+    def retryable_error?(status_code)
+      RETRYABLE_STATUSES.include?(status_code)
     end
   end
 end

@@ -128,11 +128,7 @@ RSpec.describe EzlogsRubyAgent::DeliveryEngine do
         .to_return(status: 500)
         .then.to_return(status: 200)
 
-      # First failure
-      result = engine.deliver(event_data)
-      expect(result.success?).to be false
-
-      # Second request succeeds, should reset circuit breaker
+      # First request: should retry and succeed
       result = engine.deliver(event_data)
       expect(result.success?).to be true
 
