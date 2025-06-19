@@ -190,22 +190,23 @@ module EzlogsRubyAgent
       hash.each do |key, value|
         current_path = path.empty? ? key.to_s : "#{path}.#{key}"
 
-        if value.is_a?(String)
-          @pii_patterns.each do |pattern_name, pattern|
+        case value
+        when String
+          @pii_patterns.each_value do |pattern|
             next unless value.match?(pattern)
 
             hash[key] = '[REDACTED]'
             sanitized_fields << current_path
             break
           end
-        elsif value.is_a?(Hash)
+        when Hash
           detect_pii_recursive!(value, sanitized_fields, current_path)
-        elsif value.is_a?(Array)
+        when Array
           value.each_with_index do |item, index|
             if item.is_a?(Hash)
               detect_pii_recursive!(item, sanitized_fields, "#{current_path}[#{index}]")
             elsif item.is_a?(String)
-              @pii_patterns.each do |pattern_name, pattern|
+              @pii_patterns.each_value do |pattern|
                 next unless item.match?(pattern)
 
                 value[index] = '[REDACTED]'
@@ -239,7 +240,7 @@ module EzlogsRubyAgent
     def deep_copy(obj)
       case obj
       when Hash
-        obj.each_with_object({}) { |(k, v), copy| copy[k] = deep_copy(v) }
+        obj.transform_values { |v| deep_copy(v) }
       when Array
         obj.map { |item| deep_copy(item) }
       else

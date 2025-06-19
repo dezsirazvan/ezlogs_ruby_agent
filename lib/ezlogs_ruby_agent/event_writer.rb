@@ -45,7 +45,7 @@ module EzlogsRubyAgent
       # Process each event through the event processor
       processed_events = events.map do |event_data|
         processed = @event_processor.process(event_data)
-        processed ? processed.to_h : nil
+        processed&.to_h
       rescue StandardError => e
         warn "[Ezlogs] failed to process event: #{e.message}"
         nil

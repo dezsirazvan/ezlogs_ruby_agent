@@ -183,7 +183,7 @@ module EzlogsRubyAgent
         ruby_version: RUBY_VERSION,
         hostname: Socket.gethostname
       }.freeze
-    rescue StandardError => e
+    rescue StandardError
       # Fallback if any platform detection fails
       @platform = {
         service: 'ruby-app',

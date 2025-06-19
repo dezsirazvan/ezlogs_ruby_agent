@@ -5,7 +5,7 @@ require 'ezlogs_ruby_agent/universal_event'
 module EzlogsRubyAgent
   module JobTracker
     def perform(*args)
-      correlation_id = Thread.current[:correlation_id] || SecureRandom.uuid
+      Thread.current[:correlation_id] || SecureRandom.uuid
       return unless trackable_job?
 
       start_time = Time.now

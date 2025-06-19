@@ -18,8 +18,6 @@ module EzlogsRubyAgent
       'System'
     end
 
-    private
-
     def self.get_current_user
       # Try different ways to get current user
       if defined?(current_user) && current_user
@@ -30,8 +28,6 @@ module EzlogsRubyAgent
         RequestStore.store[:current_user]
       elsif defined?(Thread.current) && Thread.current[:current_user]
         Thread.current[:current_user]
-      else
-        nil
       end
     rescue StandardError
       nil

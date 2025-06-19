@@ -150,16 +150,16 @@ RSpec.describe EzlogsRubyAgent::Configuration do
     it 'validates endpoint format' do
       config.service_name = 'test-app'
       config.environment = 'development'
-      
-      expect {
+
+      expect do
         config.delivery.endpoint = 'http://example.com:invalid-port'
         config.validate!
-      }.to raise_error(EzlogsRubyAgent::ConfigurationError, /endpoint must be a valid URL/)
+      end.to raise_error(EzlogsRubyAgent::ConfigurationError, /endpoint must be a valid URL/)
 
-      expect {
+      expect do
         config.delivery.endpoint = 'ftp://example.com'
         config.validate!
-      }.to raise_error(EzlogsRubyAgent::ConfigurationError, /endpoint must use HTTP or HTTPS/)
+      end.to raise_error(EzlogsRubyAgent::ConfigurationError, /endpoint must use HTTP or HTTPS/)
     end
 
     it 'validates timeout values' do

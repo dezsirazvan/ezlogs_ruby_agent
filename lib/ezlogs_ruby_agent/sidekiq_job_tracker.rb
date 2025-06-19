@@ -7,7 +7,7 @@ module EzlogsRubyAgent
     def call(worker, job, _queue)
       config = EzlogsRubyAgent.config
       job_name = worker.class.name
-      correlation_id = job['correlation_id'] || Thread.current[:correlation_id] || SecureRandom.uuid
+      job['correlation_id'] || Thread.current[:correlation_id] || SecureRandom.uuid
       return yield unless trackable_job?(job_name, config)
 
       start_time = Time.now

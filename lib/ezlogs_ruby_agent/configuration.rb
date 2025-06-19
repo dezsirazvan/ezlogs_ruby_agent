@@ -324,7 +324,7 @@ module EzlogsRubyAgent
         validation.add_error("timeout cannot exceed 60 seconds")
       end
 
-      if @retry_attempts < 0
+      if @retry_attempts.negative?
         validation.add_error("retry_attempts must be non-negative")
       elsif @retry_attempts > 10
         validation.add_error("retry_attempts cannot exceed 10")

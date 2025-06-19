@@ -12,7 +12,7 @@ module EzlogsRubyAgent
 
     def call(env)
       start_time = Time.now
-      correlation_id = extract_correlation_id(env)
+      extract_correlation_id(env)
       resource_id = extract_resource_id(env)
 
       status, headers, response = @app.call(env)

@@ -2,7 +2,6 @@ require 'net/http'
 require 'net/https'
 require 'zlib'
 require 'json'
-require 'thread'
 require 'timeout'
 require 'ostruct'
 
@@ -330,7 +329,7 @@ module EzlogsRubyAgent
         total_requests: @metrics[:total_requests],
         successful_requests: @metrics[:successful_requests],
         failed_requests: @metrics[:failed_requests],
-        average_response_time: if @metrics[:total_requests] > 0
+        average_response_time: if (@metrics[:total_requests]).positive?
                                  @metrics[:total_response_time] / @metrics[:total_requests]
                                else
                                  0.0
@@ -344,7 +343,7 @@ module EzlogsRubyAgent
     def metrics
       @metrics_mutex.synchronize do
         metrics_copy = @metrics.dup
-        metrics_copy[:average_response_time] = if @metrics[:total_requests] > 0
+        metrics_copy[:average_response_time] = if (@metrics[:total_requests]).positive?
                                                  @metrics[:total_response_time] / @metrics[:total_requests]
                                                else
                                                  0.0
@@ -487,7 +486,7 @@ module EzlogsRubyAgent
       end
 
       DeliveryResult.new(
-        success: failed_count == 0,
+        success: failed_count.zero?,
         status_code: 207,
         delivered_count: successful_count,
         failed_count: failed_count
@@ -516,11 +515,9 @@ module EzlogsRubyAgent
     end
 
     def extract_status_code(error_message)
-      if error_message =~ /HTTP (\d+)/
-        ::Regexp.last_match(1).to_i
-      else
-        nil
-      end
+      return unless error_message =~ /HTTP (\d+)/
+
+      ::Regexp.last_match(1).to_i
     end
   end
 end
