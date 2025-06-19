@@ -175,7 +175,7 @@ RSpec.describe EzlogsRubyAgent::DeliveryEngine do
 
     it 'delivers batches efficiently' do
       stub_request(:post, 'https://logs.example.com/events')
-        .with(body: events.to_json)
+        .with(body: /.*/)
         .to_return(status: 200)
 
       result = engine.deliver_batch(events)

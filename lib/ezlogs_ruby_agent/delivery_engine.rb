@@ -200,7 +200,7 @@ module EzlogsRubyAgent
         @config.delivery.circuit_breaker_timeout
       )
       @connection_pool = ConnectionPool.new(
-        @config.performance.max_concurrent_connections,
+        @config.performance.connection_pool_size,
         @config.delivery.endpoint,
         @config.delivery.timeout
       )
@@ -222,7 +222,6 @@ module EzlogsRubyAgent
       return DeliveryResult.new(success: false, error: 'No endpoint configured') unless @config.delivery.endpoint
 
       start_time = Time.now
-      retry_count = 0
       last_status_code = nil
       last_error = nil
       result_retry_count = 0
@@ -231,7 +230,7 @@ module EzlogsRubyAgent
         # Use circuit breaker to wrap the entire delivery attempt
         result = @circuit_breaker.call do
           # If circuit breaker has any failure count, don't retry to ensure proper tracking
-          if @circuit_breaker.failure_count > 0
+          if @circuit_breaker.failure_count.positive?
             delivery_result = perform_delivery(event_data, 0)
             if delivery_result.success?
               record_metrics(true, Time.now - start_time, 0)
@@ -246,54 +245,52 @@ module EzlogsRubyAgent
 
           # Retry loop for HTTP status errors (only when no recent failures)
           inner_retry_count = 0
-          while true
-            begin
-              delivery_result = perform_delivery(event_data, inner_retry_count)
-              if delivery_result.success?
-                record_metrics(true, Time.now - start_time, inner_retry_count)
-                return delivery_result
-              end
+          loop do
+            delivery_result = perform_delivery(event_data, inner_retry_count)
+            if delivery_result.success?
+              record_metrics(true, Time.now - start_time, inner_retry_count)
+              return delivery_result
+            end
 
-              # Don't retry on 500 errors if circuit breaker has any failures
-              if delivery_result.status_code == 500 && @circuit_breaker.failure_count > 0
-                last_status_code = delivery_result.status_code
-                last_error = delivery_result.error
-                result_retry_count = inner_retry_count
-                raise "HTTP #{delivery_result.status_code}: #{delivery_result.error}"
-              end
-
-              # If it's a retryable error, retry up to the limit
-              if retryable_error?(delivery_result.status_code) && inner_retry_count < @config.delivery.retry_attempts
-                inner_retry_count += 1
-                sleep(@config.delivery.retry_backoff**inner_retry_count)
-                next
-              end
-
-              # Non-retryable error or max retries reached - raise to circuit breaker
+            # Don't retry on 500 errors if circuit breaker has any failures
+            if delivery_result.status_code == 500 && @circuit_breaker.failure_count.positive?
               last_status_code = delivery_result.status_code
               last_error = delivery_result.error
               result_retry_count = inner_retry_count
               raise "HTTP #{delivery_result.status_code}: #{delivery_result.error}"
-            rescue StandardError => e
-              # If circuit breaker open, re-raise immediately
-              raise e if e.message == 'circuit breaker open'
-
-              inner_retry_count += 1
-              last_status_code = extract_status_code(e.message)
-              last_error = e.message
-              result_retry_count = inner_retry_count - 1
-              if inner_retry_count > @config.delivery.retry_attempts
-                # Always raise so circuit breaker can track failures
-                raise e
-              end
-              # Only retry on network/connection errors (timeout, connection refused, etc.)
-              # Don't retry on HTTP status errors
-              unless e.message.include?('timeout') || e.message.include?('network error') || e.message.include?('connection')
-                raise e
-              end
-
-              sleep(@config.delivery.retry_backoff**inner_retry_count)
             end
+
+            # If it's a retryable error, retry up to the limit
+            if retryable_error?(delivery_result.status_code) && inner_retry_count < @config.delivery.retry_attempts
+              inner_retry_count += 1
+              sleep(@config.delivery.retry_backoff**inner_retry_count)
+              next
+            end
+
+            # Non-retryable error or max retries reached - raise to circuit breaker
+            last_status_code = delivery_result.status_code
+            last_error = delivery_result.error
+            result_retry_count = inner_retry_count
+            raise "HTTP #{delivery_result.status_code}: #{delivery_result.error}"
+          rescue StandardError => e
+            # If circuit breaker open, re-raise immediately
+            raise e if e.message == 'circuit breaker open'
+
+            inner_retry_count += 1
+            last_status_code = extract_status_code(e.message)
+            last_error = e.message
+            result_retry_count = inner_retry_count - 1
+            if inner_retry_count > @config.delivery.retry_attempts
+              # Always raise so circuit breaker can track failures
+              raise e
+            end
+            # Only retry on network/connection errors (timeout, connection refused, etc.)
+            # Don't retry on HTTP status errors
+            unless e.message.include?('timeout') || e.message.include?('network error') || e.message.include?('connection')
+              raise e
+            end
+
+            sleep(@config.delivery.retry_backoff**inner_retry_count)
           end
         end
         record_metrics(result.success?, Time.now - start_time, result.retry_count)

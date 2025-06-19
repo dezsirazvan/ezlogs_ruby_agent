@@ -32,7 +32,8 @@ module EzlogsRubyAgent
     EVENT_TYPE_PATTERN = /\A[a-z][a-z0-9]*\.[a-z][a-z0-9_]*\z/
 
     attr_reader :event_id, :timestamp, :event_type, :action, :actor, :subject,
-                :correlation_id, :correlation, :metadata, :platform, :validation_errors
+                :correlation_id, :correlation, :metadata, :platform, :validation_errors,
+                :correlation_context, :payload
 
     # Create a new UniversalEvent with validation and automatic field generation
     #
@@ -44,11 +45,14 @@ module EzlogsRubyAgent
     # @param timestamp [Time, nil] When the event occurred (defaults to now)
     # @param correlation_id [String, nil] Correlation ID (auto-generated if not provided)
     # @param event_id [String, nil] Unique event ID (auto-generated if not provided)
+    # @param correlation_context [Hash, nil] Correlation context (optional)
+    # @param payload [Hash, nil] Payload data (optional)
     #
     # @raise [ArgumentError] If required keywords are missing
     # @raise [InvalidEventError] If validation fails
     def initialize(event_type:, action:, actor:, subject: nil, metadata: nil,
-                   timestamp: nil, correlation_id: nil, event_id: nil)
+                   timestamp: nil, correlation_id: nil, event_id: nil,
+                   correlation_context: nil, payload: nil)
       @event_type = event_type
       @action = action
       @actor = deep_freeze(actor.dup)
@@ -57,6 +61,8 @@ module EzlogsRubyAgent
       @timestamp = timestamp || Time.now.utc
       @event_id = event_id || generate_event_id
       @correlation_id = correlation_id || extract_correlation_id
+      @correlation_context = correlation_context
+      @payload = payload ? deep_freeze(payload.dup) : nil
       @validation_errors = []
 
       validate!
@@ -77,6 +83,8 @@ module EzlogsRubyAgent
         actor: @actor,
         subject: @subject,
         correlation: @correlation,
+        correlation_context: @correlation_context,
+        payload: @payload,
         metadata: @metadata,
         platform: @platform
       }.compact
@@ -150,7 +158,11 @@ module EzlogsRubyAgent
     # Extract correlation ID from thread context or generate new one
     def extract_correlation_id
       context = Thread.current[:ezlogs_context]
-      return context[:correlation_id] if context&.key?(:correlation_id)
+      if context.respond_to?(:correlation_id)
+        return context.correlation_id
+      elsif context.is_a?(Hash) && context.key?(:correlation_id)
+        return context[:correlation_id]
+      end
 
       # Fallback to legacy thread variable
       return Thread.current[:correlation_id] if Thread.current[:correlation_id]
@@ -161,14 +173,22 @@ module EzlogsRubyAgent
 
     # Build correlation context with request/session information
     def build_correlation_context
-      context = Thread.current[:ezlogs_context] || {}
+      context = Thread.current[:ezlogs_context]
+      context_hash =
+        if context.is_a?(Hash)
+          context
+        elsif context.respond_to?(:to_h)
+          context.to_h
+        else
+          {}
+        end
 
       @correlation = {
         correlation_id: @correlation_id,
-        flow_id: context[:flow_id],
-        session_id: context[:session_id],
-        request_id: context[:request_id],
-        parent_event_id: context[:parent_event_id]
+        flow_id: context_hash[:flow_id],
+        session_id: context_hash[:session_id],
+        request_id: context_hash[:request_id],
+        parent_event_id: context_hash[:parent_event_id]
       }.compact.freeze
     end
 

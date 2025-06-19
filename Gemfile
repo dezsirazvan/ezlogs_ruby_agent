@@ -13,3 +13,6 @@ gem "webmock", "~> 3.18"
 gem 'rubocop', require: false
 
 gem 'rails', '~> 5.0'
+
+gem 'mutex_m'
+gem 'ostruct'

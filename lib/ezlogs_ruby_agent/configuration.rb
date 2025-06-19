@@ -237,20 +237,36 @@ module EzlogsRubyAgent
     end
   end
 
-  # Performance configuration for sampling and buffering
+  # Performance configuration for optimization settings
   class PerformanceConfiguration
-    attr_accessor :sample_rate, :buffer_size, :batch_size, :flush_interval,
-                  :max_concurrent_connections, :compression_enabled, :compression_threshold
+    attr_accessor :sample_rate, :buffer_size, :flush_interval, :max_buffer_size,
+                  :batch_size, :max_batch_size, :compression_threshold,
+                  :compression_enabled, :object_pool_size, :max_object_pool_size,
+                  :connection_pool_size, :connection_timeout
 
     def initialize
       @sample_rate = 1.0
-      @buffer_size = 10_000
-      @batch_size = 1_000
-      @flush_interval = 30
-      @max_concurrent_connections = 5
-      @compression_enabled = false
-      @compression_threshold = 1024
+      @buffer_size = 1000
+      @flush_interval = 1.0
+      @max_buffer_size = 10_000
+      @batch_size = 100
+      @max_batch_size = 1000
+      @compression_threshold = 1024 # bytes
+      @compression_enabled = true
+      @object_pool_size = 100
+      @max_object_pool_size = 1000
+      @connection_pool_size = 10
+      @connection_timeout = 30
       @frozen = false
+    end
+
+    # Backward compatibility alias
+    def max_concurrent_connections
+      @connection_pool_size
+    end
+
+    def max_concurrent_connections=(value)
+      @connection_pool_size = value
     end
 
     def freeze!
@@ -260,30 +276,17 @@ module EzlogsRubyAgent
 
     def validate!(validation)
       validation.add_error("sample_rate must be between 0.0 and 1.0") if @sample_rate < 0.0 || @sample_rate > 1.0
-
-      if @buffer_size <= 0
-        validation.add_error("buffer_size must be positive")
-      elsif @buffer_size > 100_000
-        validation.add_error("buffer_size cannot exceed 100,000")
-      end
-
-      if @batch_size <= 0
-        validation.add_error("batch_size must be positive")
-      elsif @batch_size > @buffer_size
-        validation.add_error("batch_size cannot exceed buffer_size")
-      end
-
-      if @flush_interval <= 0
-        validation.add_error("flush_interval must be positive")
-      elsif @flush_interval > 300
-        validation.add_error("flush_interval cannot exceed 5 minutes")
-      end
-
-      if @max_concurrent_connections <= 0
-        validation.add_error("max_concurrent_connections must be positive")
-      elsif @max_concurrent_connections > 50
-        validation.add_error("max_concurrent_connections cannot exceed 50")
-      end
+      validation.add_error("buffer_size must be positive") if @buffer_size <= 0
+      validation.add_error("buffer_size cannot exceed 100,000") if @buffer_size > 100_000
+      validation.add_error("flush_interval must be positive") if @flush_interval <= 0
+      validation.add_error("max_buffer_size must be positive") if @max_buffer_size <= 0
+      validation.add_error("max_buffer_size cannot exceed 100,000") if @max_buffer_size > 100_000
+      validation.add_error("batch_size must be positive") if @batch_size <= 0
+      validation.add_error("max_batch_size must be positive") if @max_batch_size <= 0
+      validation.add_error("object_pool_size must be positive") if @object_pool_size <= 0
+      validation.add_error("max_object_pool_size must be positive") if @max_object_pool_size <= 0
+      validation.add_error("connection_pool_size must be positive") if @connection_pool_size <= 0
+      validation.add_error("connection_timeout must be positive") if @connection_timeout <= 0
     end
   end
 

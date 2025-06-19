@@ -1,3 +1,4 @@
+require 'rails'
 require "ezlogs_ruby_agent"
 require 'simplecov'
 require 'rspec'
@@ -8,6 +9,27 @@ require 'webmock/rspec'
 SimpleCov.start do
   add_filter "/spec/"
   minimum_coverage 100
+end
+
+# Custom matchers for testing
+RSpec::Matchers.define :have_event_count do |expected_count|
+  match do |events|
+    events&.length == expected_count
+  end
+
+  failure_message do |events|
+    "expected #{expected_count} events, got #{events&.length || 0}"
+  end
+end
+
+RSpec::Matchers.define :be_nil_or_empty do
+  match do |actual|
+    actual.nil? || actual.empty?
+  end
+
+  failure_message do |actual|
+    "expected #{actual.inspect} to be nil or empty"
+  end
 end
 
 RSpec.configure do |config|
@@ -21,32 +43,43 @@ RSpec.configure do |config|
     c.syntax = :expect
   end
 
-  # Clean up threads and reset configuration between tests
+  # Clean up between tests
   config.before(:each) do
-    # Reset the global configuration
-    EzlogsRubyAgent.instance_variable_set(:@config, nil)
-    EzlogsRubyAgent.instance_variable_set(:@writer, nil)
-    EzlogsRubyAgent.instance_variable_set(:@delivery_engine, nil)
-    EzlogsRubyAgent.instance_variable_set(:@processor, nil)
-
-    # Clear any correlation context
-    Thread.current[:correlation_id] = nil
+    # Clear thread-local storage
+    Thread.current[:current_user] = nil
     Thread.current[:ezlogs_context] = nil
+
+    # Reset EzlogsRubyAgent configuration
+    EzlogsRubyAgent.configure do |config|
+      config.service_name = 'test-app'
+      config.environment = 'test'
+      config.capture_http = true
+      config.capture_callbacks = true
+      config.capture_jobs = true
+      config.resources_to_track = []
+      config.exclude_resources = []
+      config.actor_extractor = nil
+    end
+
+    # Clear any captured events
+    EzlogsRubyAgent::DebugTools.clear_captured_events if defined?(EzlogsRubyAgent::DebugTools)
   end
 
   config.after(:each) do
-    # Clean up any background threads
-    if defined?(EzlogsRubyAgent::EventWriter) && EzlogsRubyAgent.instance_variable_get(:@writer)
-      writer = EzlogsRubyAgent.instance_variable_get(:@writer)
-      writer.instance_variable_get(:@writer)&.kill if writer.instance_variable_get(:@writer)&.alive?
-    end
+    # Clean up thread-local storage
+    Thread.current[:current_user] = nil
+    Thread.current[:ezlogs_context] = nil
 
-    # Clean up delivery engine
-    if defined?(EzlogsRubyAgent::DeliveryEngine) && EzlogsRubyAgent.instance_variable_get(:@delivery_engine)
-      engine = EzlogsRubyAgent.instance_variable_get(:@delivery_engine)
-      engine.shutdown
-    end
+    # Clear any captured events
+    EzlogsRubyAgent::DebugTools.clear_captured_events if defined?(EzlogsRubyAgent::DebugTools)
+  end
 
+  # Mock time for consistent testing
+  config.before(:each) do
+    Timecop.freeze(Time.utc(2025, 6, 19, 23, 0, 0))
+  end
+
+  config.after(:each) do
     Timecop.return
   end
 end

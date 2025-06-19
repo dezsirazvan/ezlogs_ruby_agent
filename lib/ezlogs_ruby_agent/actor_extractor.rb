@@ -1,25 +1,22 @@
 module EzlogsRubyAgent
   module ActorExtractor
-    def self.extract_actor(resource) # rubocop:disable Metrics/CyclomaticComplexity,Metrics/PerceivedComplexity
-      # Try to get current user from various contexts
-      current_user = get_current_user
-
-      if current_user
-        current_user.respond_to?(:email) ? current_user.email : current_user.id
-      elsif resource.respond_to?(:user) && resource.user
-        resource.user.respond_to?(:email) ? resource.user.email : resource.user.id
-      elsif resource.respond_to?(:current_user) && resource.current_user
-        resource.current_user.respond_to?(:email) ? resource.current_user.email : resource.current_user.id
+    def self.extract_actor(resource)
+      user = get_current_user || extract_user_from_resource(resource)
+      if user
+        {
+          type: 'user',
+          id: extract_user_id(user),
+          email: extract_user_email(user)
+        }.compact
       else
-        'System'
+        { type: 'system', id: 'system' }
       end
     rescue StandardError => e
       warn "[Ezlogs] failed to extract actor: #{e.message}"
-      'System'
+      { type: 'system', id: 'system' }
     end
 
     def self.get_current_user
-      # Try different ways to get current user
       if defined?(current_user) && current_user
         current_user
       elsif defined?(Current) && Current.respond_to?(:user)
@@ -31,6 +28,22 @@ module EzlogsRubyAgent
       end
     rescue StandardError
       nil
+    end
+
+    def self.extract_user_from_resource(resource)
+      if resource.respond_to?(:user) && resource.user
+        resource.user
+      elsif resource.respond_to?(:current_user) && resource.current_user
+        resource.current_user
+      end
+    end
+
+    def self.extract_user_id(user)
+      user.respond_to?(:id) ? user.id : user.to_s
+    end
+
+    def self.extract_user_email(user)
+      user.respond_to?(:email) ? user.email : nil
     end
   end
 end
