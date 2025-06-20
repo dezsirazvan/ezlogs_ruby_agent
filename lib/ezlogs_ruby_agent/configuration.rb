@@ -41,7 +41,8 @@ module EzlogsRubyAgent
       :flush_interval,      # in seconds, e.g. 1.0
       :max_buffer_size,     # e.g. 5_000
       :service_name,        # Name of the service/app
-      :environment          # Environment (production, development, etc.)
+      :environment,         # Environment (production, development, etc.)
+      :job_adapter          # Adapter for background jobs (sidekiq or active_job)
     )
 
     # Nested configuration objects
@@ -61,6 +62,7 @@ module EzlogsRubyAgent
       @max_buffer_size    = 5_000
       @service_name       = nil
       @environment        = nil
+      @job_adapter        = nil
 
       # Initialize nested configuration objects
       @collect = CollectConfiguration.new

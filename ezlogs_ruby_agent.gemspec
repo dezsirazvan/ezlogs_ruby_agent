@@ -40,11 +40,11 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   # Dependencies
-  spec.add_dependency "activejob", ">= 5.0"
-  spec.add_dependency "activerecord", ">= 5.0"
-  spec.add_dependency "activesupport", ">= 5.0"
+  spec.add_dependency "activejob", ">= 6.1"
+  spec.add_dependency "activerecord", ">= 6.1"
+  spec.add_dependency "activesupport", ">= 6.1"
   spec.add_dependency "rack", ">= 2.0"
-  spec.add_dependency "rails", ">= 5.0"
+  spec.add_dependency "rails", ">= 6.1"
   spec.add_dependency "sidekiq", ">= 6.0" if defined?(Sidekiq)
 
   # Development dependencies

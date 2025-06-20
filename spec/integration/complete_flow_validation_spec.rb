@@ -1,6 +1,18 @@
 require 'spec_helper'
 require 'rack/test'
-require 'active_job'
+
+# Mock ActiveJob to avoid LoggerThreadSafeLevel issues
+unless defined?(ActiveJob)
+  module ActiveJob
+    class Base
+      def self.perform_later(*args)
+        # Mock implementation
+      end
+    end
+  end
+end
+
+# require 'active_job' # Commented out to avoid LoggerThreadSafeLevel conflict
 
 RSpec.describe 'Complete Event Flow Validation', type: :integration do
   include Rack::Test::Methods

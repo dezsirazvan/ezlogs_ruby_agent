@@ -1,5 +1,8 @@
 require 'rack'
-require 'active_support/all'
+require 'active_support/core_ext/string/inflections'
+require 'active_support/core_ext/object/blank'
+require 'active_support/core_ext/time'
+# require 'active_support/core_ext/hash/compact' # Removed due to LoadError
 require 'ezlogs_ruby_agent/event_writer'
 require 'ezlogs_ruby_agent/actor_extractor'
 require 'ezlogs_ruby_agent/universal_event'

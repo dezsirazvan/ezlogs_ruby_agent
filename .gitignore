@@ -135,3 +135,7 @@ doc/
 # Bundler
 Gemfile.lock
 vendor/
+
+# Cursor IDE configuration (keep if team-wide, ignore if personal)
+.cursorrules
+.cursor/
