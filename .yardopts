@@ -1,0 +1,26 @@
+--markup markdown
+--markup-provider redcarpet
+--readme README.md
+--title "EZLogs Ruby Agent API Documentation"
+--protected
+--private
+--exclude spec/
+--exclude examples/
+--exclude benchmark/
+--exclude .git/
+--exclude .github/
+--exclude coverage/
+--exclude tmp/
+--exclude log/
+--exclude vendor/
+--exclude node_modules/
+--exclude ai_tasks/
+--output-dir doc/
+--main lib/ezlogs_ruby_agent.rb
+--files LICENSE.txt,CHANGELOG.md,CONTRIBUTING.md
+--no-highlight
+--no-progress
+--no-stats
+--no-cache
+--no-save
+--no-yardopts
