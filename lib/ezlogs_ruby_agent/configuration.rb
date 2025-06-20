@@ -29,12 +29,15 @@ module EzlogsRubyAgent
   # Enhanced configuration system with elegant DSL and validation
   class Configuration
     attr_accessor :service_name, :environment, :instrumentation, :security, :job_adapter, :included_resources,
-                  :excluded_resources, :performance, :delivery, :correlation
+                  :excluded_resources, :performance, :delivery, :correlation, :actor_extractor
 
     def initialize
       # Core settings with smart defaults
       @service_name = detect_service_name
       @environment = detect_environment
+
+      # Actor extraction - can be customized by users
+      @actor_extractor = nil
 
       # Instrumentation settings - all enabled by default for zero-config
       @instrumentation = OpenStruct.new(

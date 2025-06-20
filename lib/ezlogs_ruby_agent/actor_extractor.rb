@@ -1,6 +1,13 @@
 module EzlogsRubyAgent
   module ActorExtractor
     def self.extract_actor(resource)
+      # Use custom extractor if configured
+      if EzlogsRubyAgent.config.actor_extractor
+        custom_actor = EzlogsRubyAgent.config.actor_extractor.call(resource)
+        return custom_actor if custom_actor
+      end
+
+      # Fall back to default extraction
       user = get_current_user || extract_user_from_resource(resource)
       if user
         {
