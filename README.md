@@ -42,13 +42,11 @@ EzlogsRubyAgent.configure do |config|
   config.service_name = 'my-awesome-app'
   config.environment = Rails.env
   
-  # Delivery settings (REQUIRED for production)
+  # Local agent settings (defaults work for most setups)
   config.delivery do |delivery|
-    delivery.endpoint = 'https://logs.your-domain.com/events'
-    delivery.headers = {
-      'Authorization' => 'Bearer your-api-key-here',
-      'Content-Type' => 'application/json'
-    }
+    delivery.endpoint = 'http://localhost:8080/events'  # Local Go agent
+    delivery.timeout = 30
+    delivery.flush_interval = 5.0
   end
 end
 ```
@@ -88,7 +86,7 @@ EzlogsRubyAgent.configure do |config|
 end
 ```
 
-**For production, you must configure delivery settings (endpoint and API key).**
+**For production, configure the local Go agent endpoint.**
 
 ### Basic Configuration
 
@@ -99,13 +97,9 @@ EzlogsRubyAgent.configure do |config|
   config.service_name = 'my-awesome-app'
   config.environment = Rails.env
   
-  # Delivery settings (REQUIRED for production)
+  # Local agent settings (defaults work for most setups)
   config.delivery do |delivery|
-    delivery.endpoint = 'https://logs.your-domain.com/events'
-    delivery.headers = {
-      'Authorization' => 'Bearer your-api-key-here',
-      'Content-Type' => 'application/json'
-    }
+    delivery.endpoint = 'http://localhost:8080/events'  # Local Go agent
     delivery.timeout = 30
     delivery.flush_interval = 5.0
   end
@@ -119,9 +113,10 @@ end
 export EZLOGS_SERVICE_NAME="my-app"
 export EZLOGS_ENVIRONMENT="production"
 
-# Delivery settings (REQUIRED)
-export EZLOGS_ENDPOINT="https://logs.your-domain.com/events"
-export EZLOGS_API_KEY="your-api-key"
+# Local agent settings
+export EZLOGS_ENDPOINT="http://localhost:8080/events"
+export EZLOGS_TIMEOUT="30"
+export EZLOGS_FLUSH_INTERVAL="5.0"
 ```
 
 ## 🔍 What Gets Tracked

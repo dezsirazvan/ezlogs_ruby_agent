@@ -37,7 +37,10 @@ You can also configure via environment variables:
 ```bash
 export EZLOGS_SERVICE_NAME="my-awesome-app"
 export EZLOGS_ENVIRONMENT="production"
-export EZLOGS_ENDPOINT="https://logs.ezlogs.com/events"
+export EZLOGS_ENDPOINT="http://localhost:8080/events"
+export EZLOGS_TIMEOUT="30"
+export EZLOGS_FLUSH_INTERVAL="5.0"
+export EZLOGS_BATCH_SIZE="100"
 ```
 
 ## Instrumentation Configuration
@@ -269,73 +272,39 @@ end
 
 ## Delivery Configuration
 
-### Endpoint and Connection Settings
+### Local Agent Configuration
 
-```ruby
-EzlogsRubyAgent.configure do |config|
-  config.delivery do |delivery|
-    # EZLogs endpoint (required for production)
-    delivery.endpoint = 'https://logs.ezlogs.com/events'
-    
-    # Connection timeout
-    delivery.timeout = 30
-    
-    # Retry configuration
-    delivery.retry_attempts = 3
-    delivery.retry_backoff = 1.0
-    
-    # Batching configuration
-    delivery.batch_size = 100
-    delivery.flush_interval = 5.0
-    
-    # Custom headers (for authentication, etc.)
-    delivery.headers = {
-      'Authorization' => 'Bearer your-api-key',
-      'X-Service-Version' => '1.0.0'
-    }
-    
-    # Circuit breaker settings
-    delivery.circuit_breaker_threshold = 5
-    delivery.circuit_breaker_timeout = 60
-  end
-end
+EZLogs Ruby Agent uses a **local agent architecture** for optimal performance and reliability:
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Rails App     │    │   Local Go      │    │   Main Rails    │
+│   (Ruby Gem)    │───▶│   Agent         │───▶│   App           │
+│                 │    │                 │    │                 │
+│ • HTTP Events   │    │ • Buffers       │    │ • Processes     │
+│ • Model Changes │    │ • Batches       │    │ • Stores        │
+│ • Job Events    │    │ • Retries       │    │ • Analyzes      │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-### Environment-Specific Delivery
+### Benefits
+
+- **Performance**: Events are sent locally, no network latency
+- **Reliability**: Local buffering and retry logic
+- **Security**: No external API keys or credentials needed
+- **Scalability**: Go agent can handle high throughput
+- **Simplicity**: Zero-config for most deployments
+
+### Default Configuration
+
+The gem works out of the box with sensible defaults:
 
 ```ruby
-# Production delivery
-if Rails.env.production?
-  config.delivery do |delivery|
-    delivery.endpoint = 'https://logs.ezlogs.com/events'
-    delivery.headers = {
-      'Authorization' => "Bearer #{ENV['EZLOGS_API_KEY']}"
-    }
-    delivery.batch_size = 500
-    delivery.flush_interval = 2.0
-  end
-end
-
-# Staging delivery
-if Rails.env.staging?
-  config.delivery do |delivery|
-    delivery.endpoint = 'https://staging-logs.ezlogs.com/events'
-    delivery.headers = {
-      'Authorization' => "Bearer #{ENV['EZLOGS_STAGING_KEY']}"
-    }
-    delivery.batch_size = 100
-    delivery.flush_interval = 5.0
-  end
-end
-
-# Development delivery (local testing)
-if Rails.env.development?
-  config.delivery do |delivery|
-    delivery.endpoint = 'http://localhost:3001/events'
-    delivery.batch_size = 10
-    delivery.flush_interval = 1.0
-  end
-end
+# Default delivery settings
+delivery.endpoint = 'http://localhost:8080/events'
+delivery.timeout = 30
+delivery.flush_interval = 5.0
+delivery.batch_size = 100
 ```
 
 ## Correlation Configuration
@@ -485,7 +454,47 @@ end
 ### Production Configuration Checklist
 
 - [ ] Set appropriate `service_name` and `environment`
-- [ ] Configure `delivery.endpoint` with authentication
+- [ ] Configure `delivery.endpoint`
+
+### Complete Configuration
+
+```ruby
+EzlogsRubyAgent.configure do |config|
+  config.delivery do |delivery|
+    # Local Go agent endpoint (default: http://localhost:8080/events)
+    delivery.endpoint = 'http://localhost:8080/events'
+    
+    # Network timeout in seconds (default: 30)
+    delivery.timeout = 30
+    
+    # How often to flush events to the agent (default: 5.0 seconds)
+    delivery.flush_interval = 5.0
+    
+    # Maximum events per batch (default: 100)
+    delivery.batch_size = 100
+    
+    # Circuit breaker settings
+    delivery.circuit_breaker do |cb|
+      cb.failure_threshold = 5
+      cb.recovery_timeout = 60
+    end
+  end
+end
+```
+
+### Environment Variables
+
+```bash
+export EZLOGS_ENDPOINT="http://localhost:8080/events"
+export EZLOGS_TIMEOUT="30"
+export EZLOGS_FLUSH_INTERVAL="5.0"
+export EZLOGS_BATCH_SIZE="100"
+```
+
+## Production Checklist
+
+- [ ] Set appropriate `service_name` and `environment`
+- [ ] Configure `delivery.endpoint` for your Go agent
 - [ ] Set `performance.sample_rate` based on traffic
 - [ ] Configure `security.sensitive_fields` for your domain
 - [ ] Set `performance.enable_async = true`
@@ -495,10 +504,9 @@ end
 ### Security Best Practices
 
 - [ ] Never log sensitive fields (passwords, tokens, etc.)
-- [ ] Use environment variables for API keys
 - [ ] Configure custom PII patterns for your domain
 - [ ] Set appropriate `max_event_size` limits
-- [ ] Use HTTPS endpoints in production
+- [ ] Use HTTPS for Go agent communication if needed
 
 ### Performance Best Practices
 
@@ -519,4 +527,4 @@ This configuration system provides the flexibility to adapt EZLogs to any Rails 
 
 ---
 
-**Your configuration is now optimized for your specific use case!** 🚀 
+**Your configuration is now optimized for your specific use case!** 🚀
