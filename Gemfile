@@ -16,3 +16,8 @@ gem 'rails', '~> 5.0'
 
 gem 'mutex_m'
 gem 'ostruct'
+
+# Performance testing gems
+gem 'benchmark-ips', '~> 2.8'
+gem 'memory_profiler', '~> 1.0'
+gem 'concurrent-ruby', '~> 1.2'

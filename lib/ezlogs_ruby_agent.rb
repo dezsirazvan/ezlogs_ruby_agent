@@ -106,11 +106,10 @@ module EzlogsRubyAgent
       timestamp: timestamp
     )
 
-    # Capture for debugging if enabled
-    DebugTools.capture_event(event) if debug_mode
-
-    # Log the event
+    # Log the event (EventWriter will handle debug capture of processed event)
     writer.log(event)
+  rescue StandardError => e
+    warn "[Ezlogs] Failed to log event: #{e.class}: #{e.message}"
   end
 
   # Start a correlation flow for business processes

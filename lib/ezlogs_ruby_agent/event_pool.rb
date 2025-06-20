@@ -181,7 +181,7 @@ module EzlogsRubyAgent
     private
 
     def process_single_event(event)
-      return nil unless event&.valid?
+      return nil unless event.is_a?(UniversalEvent) && event.valid?
 
       # Convert to hash for processing
       event.to_h

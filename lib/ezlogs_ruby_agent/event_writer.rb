@@ -79,15 +79,21 @@ module EzlogsRubyAgent
     private
 
     def process_and_enqueue(event)
+      # Only process UniversalEvent objects
+      return unless event.is_a?(UniversalEvent)
+
       # Process the event through EventProcessor
       processed_event = @event_processor.process(event)
 
-      if processed_event
+      if processed_event && processed_event[:event_type] && processed_event[:action]
         record_metric(:events_processed, 1)
         @queue << processed_event
         record_metric(:events_received, 1)
+        if EzlogsRubyAgent.debug_mode && processed_event.is_a?(Hash) && processed_event[:event_type] && processed_event[:action]
+          DebugTools.capture_event(OpenStruct.new(to_h: processed_event))
+        end
       else
-        # Event was filtered out by sampling
+        # Event was filtered out by sampling or invalid
         record_metric(:events_failed, 1)
       end
     end
