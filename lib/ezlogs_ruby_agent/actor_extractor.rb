@@ -3,24 +3,31 @@ module EzlogsRubyAgent
     def self.extract_actor(resource)
       # Use custom extractor if configured
       if EzlogsRubyAgent.config.actor_extractor
-        custom_actor = EzlogsRubyAgent.config.actor_extractor.call(resource)
-        return custom_actor if custom_actor
+        begin
+          custom_actor = EzlogsRubyAgent.config.actor_extractor.call(resource)
+          return custom_actor if custom_actor
+        rescue StandardError => e
+          warn "[Ezlogs] failed to extract actor: #{e.message}"
+          # Fallback to default extraction below
+        end
       end
 
-      # Fall back to default extraction
-      user = get_current_user || extract_user_from_resource(resource)
-      if user
-        {
-          type: 'user',
-          id: extract_user_id(user),
-          email: extract_user_email(user)
-        }.compact
-      else
+      begin
+        # Fall back to default extraction
+        user = get_current_user || extract_user_from_resource(resource)
+        if user
+          {
+            type: 'user',
+            id: extract_user_id(user),
+            email: extract_user_email(user)
+          }.compact
+        else
+          { type: 'system', id: 'system' }
+        end
+      rescue StandardError => e
+        warn "[Ezlogs] failed to extract fallback actor: #{e.message}"
         { type: 'system', id: 'system' }
       end
-    rescue StandardError => e
-      warn "[Ezlogs] failed to extract actor: #{e.message}"
-      { type: 'system', id: 'system' }
     end
 
     def self.get_current_user

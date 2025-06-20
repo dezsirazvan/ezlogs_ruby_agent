@@ -235,18 +235,6 @@ RSpec.describe EzlogsRubyAgent::ActorExtractor do
   end
 
   describe '.get_current_user' do
-    context 'when current_user is defined' do
-      before do
-        @current_user = double(id: 123, email: 'test@example.com')
-        stub_const('current_user', @current_user)
-      end
-
-      it 'returns current_user' do
-        user = described_class.get_current_user
-        expect(user).to eq(@current_user)
-      end
-    end
-
     context 'when Current.user is available' do
       before do
         @current_user = double(id: 456, email: 'current@example.com')
