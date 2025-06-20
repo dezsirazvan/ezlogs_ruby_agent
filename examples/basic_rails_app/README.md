@@ -15,9 +15,9 @@ Visit `http://localhost:3000` to see the application in action.
 
 ## 📊 What This Example Demonstrates
 
-### 1. HTTP Request Tracking
+### 1. Automatic HTTP Request Tracking
 
-Every web request is automatically tracked:
+Every web request is automatically tracked - no code needed:
 
 ```ruby
 # app/controllers/orders_controller.rb
@@ -33,12 +33,12 @@ class OrdersController < ApplicationController
 end
 ```
 
-**Generated Events:**
+**Automatically Generated Events:**
 - `http_request` events for each page load
 - Request duration, status, and metadata
 - Automatic actor extraction from current user
 
-### 2. Database Change Tracking
+### 2. Automatic Database Change Tracking
 
 ActiveRecord operations are tracked automatically:
 
@@ -52,21 +52,21 @@ class Order < ApplicationRecord
 end
 ```
 
-**Generated Events:**
+**Automatically Generated Events:**
 - `database_change` events for create/update/destroy
 - Field changes and record metadata
 - Table and record ID information
 
-### 3. Custom Business Events
+### 3. Custom Business Events (Optional)
 
-Track important business actions:
+Track important business actions beyond automatic tracking:
 
 ```ruby
 # app/controllers/orders_controller.rb
 def create
   @order = Order.create!(order_params)
   
-  # Track the business event
+  # Track custom business event (optional)
   EzlogsRubyAgent.log_event(
     event_type: 'order',
     action: 'created',
@@ -83,7 +83,7 @@ def create
 end
 ```
 
-### 4. Background Job Tracking
+### 4. Automatic Background Job Tracking
 
 Job execution is tracked automatically:
 
@@ -104,7 +104,7 @@ class ProcessOrderJob < ApplicationJob
 end
 ```
 
-**Generated Events:**
+**Automatically Generated Events:**
 - `background_job` events for job start/completion
 - Job duration and queue information
 - Error tracking for failed jobs

@@ -45,40 +45,28 @@
 gem 'ezlogs_ruby_agent'
 ```
 
-```bash
-bundle install
-```
-
-### 2. Configure (Zero-Config Works!)
+### 2. Configure (Optional)
 
 ```ruby
 # config/initializers/ezlogs_ruby_agent.rb
 EzlogsRubyAgent.configure do |c|
-  c.service_name = 'my-awesome-app'
+  c.api_key = ENV['EZLOGS_API_KEY']
   c.environment = Rails.env
-  
-  # Optional: Customize what to track
-  c.collect do |collect|
-    collect.http_requests = true
-    collect.database_changes = true
-    collect.background_jobs = true
-  end
-  
-  # Optional: Security settings
-  c.security do |security|
-    security.auto_detect_pii = true
-    security.sanitize_fields = ['password', 'token']
-  end
-  
-  # Optional: Performance tuning
-  c.performance do |perf|
-    perf.sample_rate = 1.0  # 100% of events
-    perf.buffer_size = 1000
-  end
 end
 ```
 
-### 3. Track Custom Business Events
+### 3. That's It! 🎉
+
+**Events are automatically captured** - no additional code needed! After restarting your Rails application, you'll immediately see:
+
+- **HTTP Request Events**: Every web request
+- **Database Change Events**: All ActiveRecord operations  
+- **Background Job Events**: Job execution and completion
+- **Error Events**: Exceptions and failures
+
+### 4. Track Custom Business Events (Optional)
+
+For business-specific events beyond the automatic tracking:
 
 ```ruby
 # In your controllers, models, or services
@@ -86,7 +74,7 @@ class OrdersController < ApplicationController
   def create
     order = Order.create!(order_params)
     
-    # Track the business event
+    # Track custom business event (optional)
     EzlogsRubyAgent.log_event(
       event_type: 'order',
       action: 'created',
@@ -104,7 +92,7 @@ class OrdersController < ApplicationController
 end
 ```
 
-### 4. Monitor Performance
+### 5. Monitor Performance (Optional)
 
 ```ruby
 # Time critical operations

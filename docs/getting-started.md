@@ -33,12 +33,13 @@ That's it! EZLogs will automatically start tracking:
 - Database changes (ActiveRecord create/update/destroy)
 - Background jobs (ActiveJob and Sidekiq)
 
-## 📊 Your First Events
+## 🎯 Automatic Event Tracking
 
-After restarting your Rails application, you'll immediately see events flowing:
+After restarting your Rails application, **events are automatically captured** - no additional code needed!
 
 ### HTTP Request Events
-Every web request generates an event:
+Every web request generates an event automatically:
+
 ```json
 {
   "event_type": "http_request",
@@ -59,6 +60,7 @@ Every web request generates an event:
 
 ### Database Change Events
 ActiveRecord operations are automatically tracked:
+
 ```json
 {
   "event_type": "database_change",
@@ -79,6 +81,7 @@ ActiveRecord operations are automatically tracked:
 
 ### Background Job Events
 Job execution is tracked automatically:
+
 ```json
 {
   "event_type": "background_job",
@@ -95,7 +98,9 @@ Job execution is tracked automatically:
 }
 ```
 
-## 🎯 Tracking Custom Business Events
+## 🎯 Custom Business Events (Optional)
+
+For business-specific events beyond the automatic tracking, you can add custom events:
 
 ### Basic Event Tracking
 
@@ -107,7 +112,7 @@ class OrdersController < ApplicationController
   def create
     order = Order.create!(order_params)
     
-    # Track the business event
+    # Track custom business event (optional)
     EzlogsRubyAgent.log_event(
       event_type: 'order',
       action: 'created',
@@ -134,6 +139,7 @@ class Order < ApplicationRecord
   private
   
   def track_order_creation
+    # Track custom business event (optional)
     EzlogsRubyAgent.log_event(
       event_type: 'order',
       action: 'created',
@@ -156,7 +162,7 @@ class ProcessOrderJob < ApplicationJob
   def perform(order_id)
     order = Order.find(order_id)
     
-    # Track job start
+    # Track custom job events (optional)
     EzlogsRubyAgent.log_event(
       event_type: 'order_processing',
       action: 'started',
@@ -168,7 +174,7 @@ class ProcessOrderJob < ApplicationJob
     # Process the order
     order.process!
     
-    # Track job completion
+    # Track custom completion event (optional)
     EzlogsRubyAgent.log_event(
       event_type: 'order_processing',
       action: 'completed',
