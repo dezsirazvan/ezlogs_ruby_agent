@@ -113,11 +113,11 @@ module EzlogsRubyAgent
     end
 
     def trackable_job?(job_name, config)
-      resource_match = config.resources_to_track.empty? ||
-                       config.resources_to_track.map(&:downcase).any? do |resource|
+      resource_match = config.included_resources.empty? ||
+                       config.included_resources.map(&:downcase).any? do |resource|
                          job_name.downcase.include?(resource.downcase)
                        end
-      excluded_match = config.exclude_resources.map(&:downcase).any? do |resource|
+      excluded_match = config.excluded_resources.map(&:downcase).any? do |resource|
         job_name.downcase.include?(resource.downcase)
       end
       resource_match && !excluded_match

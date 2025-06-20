@@ -1,666 +1,422 @@
 # Configuration Guide
 
-EZLogs Ruby Agent provides a powerful and flexible configuration system that adapts to your application's needs. This guide covers all configuration options from basic setup to advanced tuning.
+EZLogs Ruby Agent is designed to work out of the box with intelligent defaults, but you can customize every aspect of its behavior.
 
-## 🚀 Basic Configuration
+## 🚀 Zero-Config Setup
 
-### Minimal Setup
-
-The absolute minimum configuration requires just two settings:
+EZLogs Ruby Agent works immediately with intelligent defaults:
 
 ```ruby
 # config/initializers/ezlogs_ruby_agent.rb
-EzlogsRubyAgent.configure do |c|
-  c.service_name = 'my-awesome-app'
-  c.environment = Rails.env
+EzlogsRubyAgent.configure do |config|
+  # That's it! All collectors enabled by default
+  # Service name and environment auto-detected
 end
 ```
 
-This enables:
-- HTTP request tracking
-- Database change tracking
-- Background job tracking
-- Default security settings
-- Optimal performance settings
+**Default Behavior:**
+- ✅ **Service Name**: Auto-detected from Rails app name or directory
+- ✅ **Environment**: Auto-detected from `Rails.env` or environment variables
+- ✅ **All Collectors**: HTTP, Database, Jobs, Sidekiq enabled
+- ✅ **Security**: PII detection and sanitization enabled
+- ✅ **Performance**: Optimized for production workloads
 
-### Standard Configuration
+## 🔧 Basic Configuration
 
-A typical production configuration:
+### Core Settings
 
 ```ruby
-EzlogsRubyAgent.configure do |c|
-  # Required: Service identification
-  c.service_name = 'my-awesome-app'
-  c.environment = Rails.env
+# config/initializers/ezlogs_ruby_agent.rb
+EzlogsRubyAgent.configure do |config|
+  # Core settings
+  config.service_name = 'my-awesome-app'
+  config.environment = Rails.env
   
-  # Optional: Customize collection
-  c.collect do |collect|
-    collect.http_requests = true
-    collect.database_changes = true
-    collect.background_jobs = true
-    collect.custom_events = true
-  end
-  
-  # Optional: Security settings
-  c.security do |security|
-    security.auto_detect_pii = true
-    security.sanitize_fields = ['password', 'token', 'api_key']
-    security.max_payload_size = 1024 * 1024  # 1MB
-  end
-  
-  # Optional: Performance tuning
-  c.performance do |perf|
-    perf.sample_rate = 1.0
-    perf.buffer_size = 1000
-    perf.flush_interval = 1.0
-    perf.max_concurrent_connections = 5
-  end
-  
-  # Optional: Delivery settings
-  c.delivery do |delivery|
-    delivery.endpoint = 'https://api.ezlogs.com/v1/events'
+  # Delivery settings (where events are sent)
+  config.delivery do |delivery|
+    delivery.endpoint = 'https://logs.your-domain.com/events'
     delivery.timeout = 30
-    delivery.retry_attempts = 3
-  end
-  
-  # Optional: Correlation settings
-  c.correlation do |correlation|
-    correlation.enable_flow_tracking = true
-    correlation.max_flow_depth = 10
+    delivery.flush_interval = 5.0
   end
 end
 ```
 
-## 📊 Collection Configuration
+### Environment Variables
 
-Control what events are captured and how they're processed.
+```bash
+# Core settings
+export EZLOGS_SERVICE_NAME="my-app"
+export EZLOGS_ENVIRONMENT="production"
 
-### HTTP Request Tracking
+# Delivery settings
+export EZLOGS_ENDPOINT="https://logs.your-domain.com/events"
+export EZLOGS_API_KEY="your-api-key"
+```
+
+## 📊 Instrumentation Settings
+
+Control what gets tracked automatically:
 
 ```ruby
-c.collect do |collect|
-  collect.http_requests = true
-  
-  # Optional: Filter specific paths
-  collect.http_paths_to_track = ['/api/*', '/admin/*']
-  collect.http_paths_to_exclude = ['/health', '/metrics']
-  
-  # Optional: Filter by HTTP methods
-  collect.http_methods_to_track = ['GET', 'POST', 'PUT', 'DELETE']
-  
-  # Optional: Capture request/response bodies (use with caution)
-  collect.capture_request_body = false
-  collect.capture_response_body = false
-  collect.max_body_size = 1024  # bytes
+EzlogsRubyAgent.configure do |config|
+  config.instrumentation do |inst|
+    inst.http = true              # HTTP request tracking
+    inst.active_record = true     # Database change tracking
+    inst.active_job = true        # ActiveJob tracking
+    inst.sidekiq = true           # Sidekiq job tracking
+    inst.custom = true            # Custom event tracking
+  end
 end
 ```
 
-### Database Change Tracking
+### Disable Specific Collectors
 
 ```ruby
-c.collect do |collect|
-  collect.database_changes = true
-  
-  # Optional: Track specific models
-  collect.resources_to_track = ['User', 'Order', 'Payment']
-  collect.exclude_resources = ['Admin', 'AuditLog', 'Session']
-  
-  # Optional: Track specific operations
-  collect.track_creates = true
-  collect.track_updates = true
-  collect.track_destroys = true
-  
-  # Optional: Capture field changes
-  collect.capture_changes = true
-  collect.exclude_changes = ['updated_at', 'created_at']
+# Disable database tracking in development
+if Rails.env.development?
+  config.instrumentation.active_record = false
+end
+
+# Disable Sidekiq if not using it
+unless defined?(Sidekiq)
+  config.instrumentation.sidekiq = false
 end
 ```
 
-### Background Job Tracking
+## 🔒 Security Settings
+
+### PII Protection
 
 ```ruby
-c.collect do |collect|
-  collect.background_jobs = true
-  
-  # Optional: Track specific job classes
-  collect.jobs_to_track = ['ProcessOrderJob', 'SendEmailJob']
-  collect.exclude_jobs = ['CleanupJob', 'MaintenanceJob']
-  
-  # Optional: Track job arguments (use with caution)
-  collect.capture_job_arguments = false
-  collect.max_argument_size = 512  # bytes
-end
-```
-
-### Custom Event Tracking
-
-```ruby
-c.collect do |collect|
-  collect.custom_events = true
-  
-  # Optional: Validate event structure
-  collect.validate_events = true
-  
-  # Optional: Required event fields
-  collect.required_event_fields = ['event_type', 'action']
-end
-```
-
-## 🛡️ Security Configuration
-
-Protect sensitive data and ensure compliance.
-
-### PII Detection & Sanitization
-
-```ruby
-c.security do |security|
-  # Enable automatic PII detection
-  security.auto_detect_pii = true
-  
-  # Manually specify fields to sanitize
-  security.sanitize_fields = [
-    'password',
-    'token',
-    'api_key',
-    'ssn',
-    'credit_card',
-    'email'
-  ]
-  
-  # Custom regex patterns for sensitive data
-  security.custom_patterns = {
-    'api_key' => /\b[A-Za-z0-9]{32}\b/,
-    'phone' => /\b\d{3}-\d{3}-\d{4}\b/,
-    'credit_card' => /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/
-  }
-  
-  # Sanitization method
-  security.sanitization_method = :mask  # :mask, :remove, :hash
-  security.mask_character = '*'  # Character to use for masking
-end
-```
-
-### Payload Limits
-
-```ruby
-c.security do |security|
-  # Maximum payload size
-  security.max_payload_size = 1024 * 1024  # 1MB
-  
-  # Maximum field value size
-  security.max_field_size = 1024  # 1KB
-  
-  # Maximum number of fields per event
-  security.max_fields_per_event = 100
+EzlogsRubyAgent.configure do |config|
+  config.security do |security|
+    security.auto_detect_pii = true
+    security.sensitive_fields = ['password', 'token', 'api_key', 'ssn']
+    security.max_event_size = 1024 * 1024 # 1MB
+    security.custom_pii_patterns = {
+      'employee_id' => /\bEMP-\d{6}\b/,
+      'credit_card' => /\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/
+    }
+  end
 end
 ```
 
 ### Field Filtering
 
 ```ruby
-c.security do |security|
-  # Fields to always exclude
-  security.exclude_fields = [
-    'password',
-    'secret',
-    'private_key',
-    'session_data'
-  ]
-  
-  # Fields to only include (whitelist)
-  security.include_only_fields = [
-    'id',
-    'name',
-    'email',
-    'status'
-  ]
-  
-  # Nested field filtering
-  security.exclude_nested_fields = [
-    'user.password',
-    'order.payment.token',
-    'config.secrets'
-  ]
+# Include only specific resources
+config.included_resources = ['order', 'user', 'payment']
+
+# Exclude sensitive resources
+config.excluded_resources = ['temp', 'cache', 'session', 'password_reset']
+```
+
+### Environment Variables
+
+```bash
+# Security settings
+export EZLOGS_AUTO_DETECT_PII="true"
+export EZLOGS_MAX_EVENT_SIZE="1048576"
+export EZLOGS_SENSITIVE_FIELDS="password,token,api_key,ssn"
+```
+
+## ⚡ Performance Settings
+
+### Optimization
+
+```ruby
+EzlogsRubyAgent.configure do |config|
+  config.performance do |perf|
+    perf.sample_rate = 1.0        # 100% sampling
+    perf.event_buffer_size = 1000
+    perf.max_delivery_connections = 10
+    perf.enable_compression = true
+    perf.enable_async = true
+  end
 end
 ```
 
-## ⚡ Performance Configuration
-
-Optimize for your application's performance requirements.
-
-### Sampling & Buffering
+### High-Traffic Applications
 
 ```ruby
-c.performance do |perf|
-  # Event sampling rate (0.0 to 1.0)
-  perf.sample_rate = 1.0  # 100% of events
-  
-  # Buffer size for batching
-  perf.buffer_size = 1000
-  
-  # Flush interval in seconds
-  perf.flush_interval = 1.0
-  
-  # Maximum events per batch
-  perf.max_batch_size = 100
+# For high-traffic apps, reduce sampling
+config.performance.sample_rate = 0.1  # 10% sampling
+
+# Increase buffer size for batch processing
+config.performance.event_buffer_size = 5000
+
+# More delivery connections
+config.performance.max_delivery_connections = 20
+```
+
+### Environment Variables
+
+```bash
+# Performance settings
+export EZLOGS_SAMPLE_RATE="1.0"
+export EZLOGS_EVENT_BUFFER_SIZE="1000"
+export EZLOGS_MAX_DELIVERY_CONNECTIONS="10"
+export EZLOGS_ENABLE_COMPRESSION="true"
+```
+
+## 🌐 Delivery Settings
+
+### Go Server Configuration
+
+```ruby
+EzlogsRubyAgent.configure do |config|
+  config.delivery do |delivery|
+    delivery.endpoint = 'https://logs.your-domain.com/events'
+    delivery.timeout = 30
+    delivery.flush_interval = 5.0
+    delivery.batch_size = 100
+    delivery.retry_attempts = 3
+    delivery.retry_backoff = 2.0
+    delivery.circuit_breaker_threshold = 5
+    delivery.circuit_breaker_timeout = 60
+    delivery.headers = {
+      'X-API-Key' => ENV['EZLOGS_API_KEY'],
+      'X-Service-Name' => 'my-app'
+    }
+  end
 end
 ```
 
-### Connection Management
+### Production Delivery Settings
 
 ```ruby
-c.performance do |perf|
-  # Connection pool size
-  perf.connection_pool_size = 5
-  
-  # Connection timeout
-  perf.connection_timeout = 30
-  
-  # Keep-alive settings
-  perf.keep_alive = true
-  perf.keep_alive_timeout = 60
-end
-```
-
-### Memory Management
-
-```ruby
-c.performance do |perf|
-  # Maximum memory usage
-  perf.max_memory_usage = 100 * 1024 * 1024  # 100MB
-  
-  # Garbage collection frequency
-  perf.gc_frequency = 1000  # events
-  
-  # Event cleanup interval
-  perf.cleanup_interval = 60  # seconds
-end
-```
-
-### Threading
-
-```ruby
-c.performance do |perf|
-  # Background thread count
-  perf.background_threads = 2
-  
-  # Thread priority
-  perf.thread_priority = :low
-  
-  # Thread timeout
-  perf.thread_timeout = 30
-end
-```
-
-## 🚚 Delivery Configuration
-
-Configure how events are delivered to your analytics platform.
-
-### Endpoint Configuration
-
-```ruby
-c.delivery do |delivery|
-  # Delivery endpoint
-  delivery.endpoint = 'https://api.ezlogs.com/v1/events'
-  
-  # API key (from environment variable)
-  delivery.api_key = ENV['EZLOGS_API_KEY']
-  
-  # Request timeout
+# Production-optimized delivery
+config.delivery do |delivery|
+  delivery.endpoint = 'https://logs.your-domain.com/events'
   delivery.timeout = 30
-  
-  # Retry configuration
-  delivery.retry_attempts = 3
-  delivery.retry_backoff = 1.5
-  delivery.retry_max_delay = 60
-end
-```
-
-### Authentication
-
-```ruby
-c.delivery do |delivery|
-  # Basic authentication
-  delivery.username = ENV['EZLOGS_USERNAME']
-  delivery.password = ENV['EZLOGS_PASSWORD']
-  
-  # Bearer token
-  delivery.bearer_token = ENV['EZLOGS_BEARER_TOKEN']
-  
-  # Custom headers
-  delivery.custom_headers = {
-    'X-Custom-Header' => 'value',
-    'User-Agent' => 'EZLogs-Ruby-Agent/1.0'
+  delivery.flush_interval = 2.0        # Faster flushing
+  delivery.batch_size = 200            # Larger batches
+  delivery.retry_attempts = 5          # More retries
+  delivery.retry_backoff = 1.5         # Faster backoff
+  delivery.circuit_breaker_threshold = 10
+  delivery.circuit_breaker_timeout = 120
+  delivery.headers = {
+    'X-API-Key' => ENV['EZLOGS_API_KEY'],
+    'X-Environment' => Rails.env,
+    'X-Version' => '1.0.0'
   }
 end
 ```
 
-### Compression & Encoding
+### Environment Variables
+
+```bash
+# Delivery settings
+export EZLOGS_ENDPOINT="https://logs.your-domain.com/events"
+export EZLOGS_TIMEOUT="30"
+export EZLOGS_FLUSH_INTERVAL="5.0"
+export EZLOGS_BATCH_SIZE="100"
+export EZLOGS_RETRY_ATTEMPTS="3"
+export EZLOGS_API_KEY="your-api-key"
+```
+
+## 🔗 Correlation Settings
+
+### Correlation Configuration
 
 ```ruby
-c.delivery do |delivery|
-  # Enable compression
-  delivery.compress_payloads = true
-  delivery.compression_level = 6
-  
-  # Encoding
-  delivery.encoding = 'gzip'  # gzip, deflate, none
-  
-  # Batch delivery
-  delivery.batch_delivery = true
-  delivery.max_batch_size = 100
-  delivery.batch_timeout = 5
+EzlogsRubyAgent.configure do |config|
+  config.correlation do |corr|
+    corr.enable_correlation = true
+    corr.max_correlation_depth = 10
+    corr.thread_safe = true
+    corr.auto_generate_correlation_ids = true
+  end
 end
 ```
 
-## 🔗 Correlation Configuration
-
-Configure request tracing and business process tracking.
-
-### Flow Tracking
+### Custom Correlation
 
 ```ruby
-c.correlation do |correlation|
-  # Enable business flow tracking
-  correlation.enable_flow_tracking = true
-  
-  # Maximum flow depth
-  correlation.max_flow_depth = 10
-  
-  # Flow timeout
-  correlation.flow_timeout = 3600  # 1 hour
-  
-  # Auto-generate correlation IDs
-  correlation.auto_correlation_ids = true
+# Use custom correlation IDs
+config.correlation do |corr|
+  corr.auto_generate_correlation_ids = false
+  corr.correlation_id_generator = -> { SecureRandom.uuid }
 end
 ```
 
-### Request Tracing
+## 🧪 Development Settings
 
-```ruby
-c.correlation do |correlation|
-  # Enable request tracing
-  correlation.enable_request_tracing = true
-  
-  # Trace header names
-  correlation.trace_header = 'X-Trace-ID'
-  correlation.span_header = 'X-Span-ID'
-  
-  # Propagate headers
-  correlation.propagate_headers = true
-end
-```
-
-### Context Management
-
-```ruby
-c.correlation do |correlation|
-  # Context storage
-  correlation.context_storage = :thread_local  # :thread_local, :fiber_local
-  
-  # Context cleanup
-  correlation.auto_cleanup = true
-  correlation.cleanup_interval = 300  # 5 minutes
-  
-  # Context serialization
-  correlation.serializable_context = true
-end
-```
-
-## 🎭 Actor Extraction
-
-Configure how to identify who performed each action.
-
-### Basic Actor Extraction
-
-```ruby
-# Extract user ID from current_user
-c.actor_extractor = ->(context) do
-  context.current_user&.id
-end
-```
-
-### Advanced Actor Extraction
-
-```ruby
-c.actor_extractor = ->(context) do
-  # Try multiple sources
-  actor = context.current_user&.id ||
-          context.request&.session[:user_id] ||
-          context.request&.headers['X-User-ID'] ||
-          context.request&.remote_ip
-  
-  # Add context
-  {
-    id: actor,
-    type: context.current_user ? 'user' : 'anonymous',
-    session_id: context.request&.session[:session_id]
-  }
-end
-```
-
-### Custom Actor Context
-
-```ruby
-c.actor_extractor = ->(context) do
-  user = context.current_user
-  
-  return nil unless user
-  
-  {
-    id: user.id,
-    email: user.email,
-    role: user.role,
-    organization_id: user.organization_id,
-    permissions: user.permissions
-  }
-end
-```
-
-## 🌍 Environment-Specific Configuration
-
-### Development Environment
+### Debug Mode
 
 ```ruby
 # config/environments/development.rb
-EzlogsRubyAgent.configure do |c|
-  c.service_name = 'my-app-dev'
-  c.environment = 'development'
-  
-  # Enable debug mode
-  EzlogsRubyAgent.debug_mode = true
-  
-  # Lower sampling for development
-  c.performance do |perf|
-    perf.sample_rate = 0.1  # 10% sampling
-    perf.buffer_size = 100
-  end
-  
-  # More verbose logging
-  c.delivery do |delivery|
-    delivery.endpoint = 'http://localhost:9000/events'
-  end
+EzlogsRubyAgent.configure do |config|
+  config.debug_mode = true
+  config.delivery.flush_interval = 1.0  # Faster flushing in dev
 end
 ```
 
-### Test Environment
+### Test Mode
 
 ```ruby
 # config/environments/test.rb
-EzlogsRubyAgent.configure do |c|
-  c.service_name = 'my-app-test'
-  c.environment = 'test'
-  
-  # Disable actual delivery in tests
-  c.delivery do |delivery|
-    delivery.endpoint = nil
-  end
-  
-  # Enable test mode
-  EzlogsRubyAgent.test_mode do
-    # Events captured in memory
-  end
+EzlogsRubyAgent.configure do |config|
+  config.test_mode = true
+  config.delivery.endpoint = nil  # No delivery in tests
 end
 ```
 
-### Production Environment
+## 📊 Complete Configuration Example
 
 ```ruby
-# config/environments/production.rb
-EzlogsRubyAgent.configure do |c|
-  c.service_name = 'my-app-prod'
-  c.environment = 'production'
+# config/initializers/ezlogs_ruby_agent.rb
+EzlogsRubyAgent.configure do |config|
+  # Core settings
+  config.service_name = 'my-awesome-app'
+  config.environment = Rails.env
   
-  # Load from environment variables
-  c.load_from_environment!
-  
-  # High-performance settings
-  c.performance do |perf|
-    perf.sample_rate = 0.1  # 10% sampling for high traffic
-    perf.buffer_size = 5000
-    perf.flush_interval = 2.0
+  # Instrumentation settings
+  config.instrumentation do |inst|
+    inst.http = true
+    inst.active_record = true
+    inst.active_job = true
+    inst.sidekiq = defined?(Sidekiq)
+    inst.custom = true
   end
   
-  # Strict security
-  c.security do |security|
+  # Security settings
+  config.security do |security|
     security.auto_detect_pii = true
-    security.sanitize_fields = ['password', 'token', 'secret']
-    security.max_payload_size = 512 * 1024  # 512KB
+    security.sensitive_fields = ['password', 'token', 'api_key', 'ssn']
+    security.max_event_size = 1024 * 1024
+    security.custom_pii_patterns = {
+      'employee_id' => /\bEMP-\d{6}\b/
+    }
   end
-end
-```
-
-## 🔧 Environment Variables
-
-Configure via environment variables for containerized deployments:
-
-```bash
-# Required
-export EZLOGS_SERVICE_NAME="my-awesome-app"
-export EZLOGS_ENVIRONMENT="production"
-
-# Collection
-export EZLOGS_SAMPLE_RATE="0.1"
-export EZLOGS_BUFFER_SIZE="5000"
-
-# Security
-export EZLOGS_AUTO_DETECT_PII="true"
-export EZLOGS_MAX_PAYLOAD_SIZE="524288"
-
-# Delivery
-export EZLOGS_ENDPOINT="https://api.ezlogs.com/v1/events"
-export EZLOGS_API_KEY="your-api-key"
-export EZLOGS_TIMEOUT="30"
-
-# Performance
-export EZLOGS_FLUSH_INTERVAL="2.0"
-export EZLOGS_MAX_CONCURRENT_CONNECTIONS="10"
-```
-
-Load environment variables in configuration:
-
-```ruby
-EzlogsRubyAgent.configure do |c|
-  c.load_from_environment!
   
-  # Override specific settings
-  c.service_name = 'my-app' if Rails.env.development?
-end
-```
-
-## ✅ Configuration Validation
-
-Validate your configuration to catch issues early:
-
-```ruby
-EzlogsRubyAgent.configure do |c|
-  # ... your configuration ...
-  
-  # Validate configuration
-  validation = c.validate!
-  
-  if validation.valid?
-    puts "✅ Configuration is valid"
-    puts validation.summary
-  else
-    puts "❌ Configuration errors:"
-    validation.errors.each { |error| puts "  - #{error}" }
-    raise EzlogsRubyAgent::ConfigurationError, "Invalid configuration"
+  # Performance settings
+  config.performance do |perf|
+    perf.sample_rate = Rails.env.production? ? 0.1 : 1.0
+    perf.event_buffer_size = 1000
+    perf.max_delivery_connections = 10
+    perf.enable_compression = true
+    perf.enable_async = true
   end
+  
+  # Delivery settings
+  config.delivery do |delivery|
+    delivery.endpoint = ENV['EZLOGS_ENDPOINT']
+    delivery.timeout = 30
+    delivery.flush_interval = Rails.env.production? ? 2.0 : 5.0
+    delivery.batch_size = Rails.env.production? ? 200 : 100
+    delivery.retry_attempts = 3
+    delivery.retry_backoff = 2.0
+    delivery.circuit_breaker_threshold = 5
+    delivery.circuit_breaker_timeout = 60
+    delivery.headers = {
+      'X-API-Key' => ENV['EZLOGS_API_KEY'],
+      'X-Environment' => Rails.env,
+      'X-Service-Name' => config.service_name
+    }
+  end
+  
+  # Correlation settings
+  config.correlation do |corr|
+    corr.enable_correlation = true
+    corr.max_correlation_depth = 10
+    corr.thread_safe = true
+    corr.auto_generate_correlation_ids = true
+  end
+  
+  # Resource filtering
+  config.included_resources = ['order', 'user', 'payment']
+  config.excluded_resources = ['temp', 'cache', 'session']
 end
 ```
 
-## 📊 Configuration Summary
+## 🔍 Configuration Validation
 
-Generate a human-readable summary of your configuration:
-
-```ruby
-config = EzlogsRubyAgent.config
-puts config.summary
-```
-
-Output example:
-```
-Service: my-awesome-app
-Environment: production
-HTTP Requests: enabled
-Database Changes: enabled
-Background Jobs: enabled
-Sample Rate: 10%
-Buffer Size: 5000
-Delivery Endpoint: https://api.ezlogs.com/v1/events
-Security: PII detection enabled
-```
-
-## 🔄 Dynamic Configuration
-
-Update configuration at runtime (use with caution):
+### Check Configuration
 
 ```ruby
-# Update sampling rate based on load
-if high_traffic?
-  EzlogsRubyAgent.config.performance.sample_rate = 0.05  # 5%
-else
-  EzlogsRubyAgent.config.performance.sample_rate = 1.0   # 100%
-end
+# Validate configuration
+puts EzlogsRubyAgent.config.to_s
 
-# Update security settings
-EzlogsRubyAgent.config.security.sanitize_fields << 'new_sensitive_field'
+# Check specific settings
+puts "Service Name: #{EzlogsRubyAgent.config.service_name}"
+puts "Environment: #{EzlogsRubyAgent.config.environment}"
+puts "HTTP Tracking: #{EzlogsRubyAgent.config.instrumentation.http}"
+puts "PII Detection: #{EzlogsRubyAgent.config.security.auto_detect_pii}"
 ```
 
-## 🚨 Configuration Best Practices
+### Health Check
 
-### Security
-- Always enable PII detection in production
-- Sanitize sensitive fields
-- Set appropriate payload size limits
-- Use environment variables for secrets
+```ruby
+# Check delivery engine health
+status = EzlogsRubyAgent.delivery_engine.health_status
+puts "Circuit Breaker: #{status[:circuit_breaker_state]}"
+puts "Connection Pool: #{status[:connection_pool_size]}"
+puts "Success Rate: #{status[:successful_requests]}/#{status[:total_requests]}"
+```
 
-### Performance
-- Use sampling for high-traffic applications
-- Tune buffer sizes based on memory constraints
-- Monitor delivery performance
-- Set appropriate timeouts
+## 🚨 Common Configuration Issues
 
-### Reliability
-- Configure retry logic for network failures
-- Set up health monitoring
-- Use circuit breakers for external dependencies
-- Implement graceful degradation
+### Events Not Being Delivered
 
-### Development
-- Enable debug mode in development
-- Use test mode in test suites
-- Validate configuration early
-- Document custom settings
+1. **Check endpoint configuration**:
+   ```ruby
+   puts EzlogsRubyAgent.config.delivery.endpoint
+   ```
+
+2. **Verify network connectivity**:
+   ```ruby
+   require 'net/http'
+   uri = URI(EzlogsRubyAgent.config.delivery.endpoint)
+   response = Net::HTTP.get_response(uri)
+   puts "Endpoint reachable: #{response.code}"
+   ```
+
+3. **Check circuit breaker status**:
+   ```ruby
+   status = EzlogsRubyAgent.delivery_engine.health_status
+   puts "Circuit Breaker: #{status[:circuit_breaker_state]}"
+   ```
+
+### Performance Issues
+
+1. **Monitor buffer size**:
+   ```ruby
+   puts "Buffer size: #{EzlogsRubyAgent.config.performance.event_buffer_size}"
+   ```
+
+2. **Check delivery metrics**:
+   ```ruby
+   metrics = EzlogsRubyAgent.delivery_engine.metrics
+   puts "Average response time: #{metrics[:average_response_time]}ms"
+   ```
+
+3. **Adjust sampling rate**:
+   ```ruby
+   # Reduce sampling for high-traffic apps
+   config.performance.sample_rate = 0.1
+   ```
+
+### Security Concerns
+
+1. **Verify PII detection**:
+   ```ruby
+   puts "PII Detection: #{EzlogsRubyAgent.config.security.auto_detect_pii}"
+   puts "Sensitive Fields: #{EzlogsRubyAgent.config.security.sensitive_fields}"
+   ```
+
+2. **Check event size limits**:
+   ```ruby
+   puts "Max Event Size: #{EzlogsRubyAgent.config.security.max_event_size}"
+   ```
 
 ## 📚 Next Steps
 
+- **[Getting Started](getting-started.md)** - Basic setup and usage
 - **[Performance Guide](performance.md)** - Optimization and tuning
 - **[Security Guide](security.md)** - Security best practices
 - **[API Reference](../lib/ezlogs_ruby_agent.rb)** - Complete API documentation
-- **[Examples](../examples/)** - Complete example applications
 
 ---
 
-**Your configuration is the foundation of successful event tracking.** Take time to tune it for your specific needs and requirements! 🚀 
+**Your configuration is now optimized for your specific use case!** 🚀 

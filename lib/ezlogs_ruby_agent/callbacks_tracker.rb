@@ -20,9 +20,9 @@ module EzlogsRubyAgent
       config = EzlogsRubyAgent.config
       resource_name = self.class.name
 
-      resource_inclusion = config.resources_to_track.empty? ||
-                           config.resources_to_track.any? { |resource| resource.match?(resource_name) }
-      resource_exclusion = config.exclude_resources.any? { |resource| resource.match?(resource_name) }
+      resource_inclusion = config.included_resources.empty? ||
+                           config.included_resources.any? { |resource| resource.match?(resource_name) }
+      resource_exclusion = config.excluded_resources.any? { |resource| resource.match?(resource_name) }
 
       resource_inclusion && !resource_exclusion
     end
@@ -75,40 +75,33 @@ module EzlogsRubyAgent
 
     def build_change_metadata(action, changes, previous_attributes)
       metadata = {
+        model: self.class.name,
+        table: model_name.plural,
+        record_id: id,
         action: action,
-        model: model_name.singular,
-        table: table_name,
-        changes: sanitize_changes(changes),
-        timestamp: Time.now.iso8601
+        changes: changes,
+        previous: previous_attributes,
+        user_id: respond_to?(:user_id) ? user_id : nil
       }
 
-      # Add previous attributes for updates
-      if action == 'update' && previous_attributes
-        metadata[:previous_attributes] = sanitize_attributes(previous_attributes)
+      # Add validation errors if present
+      if respond_to?(:errors) && errors.respond_to?(:any?) && errors.any? && errors.respond_to?(:full_messages)
+        metadata[:validation_errors] = errors.full_messages
       end
 
-      # Add validation errors if any
-      metadata[:validation_errors] = errors.full_messages if respond_to?(:errors) && errors.any?
-
-      # Add bulk operation context
+      # Add bulk operation context if present
       if respond_to?(:bulk_operation?) && bulk_operation?
         metadata[:bulk_operation] = true
-        metadata[:bulk_size] = bulk_size if respond_to?(:bulk_size)
+        metadata[:bulk_size] = respond_to?(:bulk_size) ? bulk_size : nil
       end
 
-      # Add transaction context
-      if defined?(ActiveRecord) && ActiveRecord::Base.connection.transaction_open?
-        metadata[:transaction_id] =
-          extract_transaction_id
-      end
-
-      metadata
+      metadata.compact
     end
 
     def sanitize_changes(changes)
       return {} unless changes.is_a?(Hash)
 
-      sensitive_fields = EzlogsRubyAgent.config.security.sanitize_fields
+      sensitive_fields = EzlogsRubyAgent.config.security.sensitive_fields
 
       changes.transform_values do |change|
         if change.is_a?(Array) && change.size == 2
@@ -126,7 +119,7 @@ module EzlogsRubyAgent
     def sanitize_attributes(attributes)
       return {} unless attributes.is_a?(Hash)
 
-      sensitive_fields = EzlogsRubyAgent.config.security.sanitize_fields
+      sensitive_fields = EzlogsRubyAgent.config.security.sensitive_fields
 
       attributes.transform_values do |value|
         sanitize_value(value, sensitive_fields)
@@ -136,9 +129,19 @@ module EzlogsRubyAgent
     def sanitize_value(value, sensitive_fields)
       return value unless value.is_a?(String)
 
-      # Check if this field should be sanitized
+      # Check if this field should be sanitized based on common patterns
       field_name = caller_locations(1, 1)[0].label
-      if sensitive_fields.any? { |field| field_name.downcase.include?(field.downcase) }
+      should_sanitize = sensitive_fields.any? { |field| field_name.downcase.include?(field.downcase) }
+
+      # Also check the value itself for sensitive patterns
+      sensitive_patterns = [
+        /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/, # email
+        /\b(?:\d{4}[-\s]?){3}\d{4}\b/, # credit card
+        /\b\d{3}-?\d{2}-?\d{4}\b/, # SSN
+        /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/ # email pattern
+      ]
+
+      if should_sanitize || sensitive_patterns.any? { |pattern| value.match?(pattern) }
         '[REDACTED]'
       else
         value

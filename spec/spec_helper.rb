@@ -1,6 +1,10 @@
 # Load the gem
 require "ezlogs_ruby_agent"
+require 'json'
+require 'active_support/json'
+require 'active_support/core_ext/object/json'
 require 'simplecov'
+require 'climate_control'
 # require 'rspec' # Not needed, handled by rspec-rails
 require 'timecop'
 require 'webmock/rspec'
@@ -53,12 +57,12 @@ RSpec.configure do |config|
     EzlogsRubyAgent.configure do |config|
       config.service_name = 'test-app'
       config.environment = 'test'
-      config.capture_http = true
-      config.capture_callbacks = true
-      config.capture_jobs = true
-      config.resources_to_track = []
-      config.exclude_resources = []
-      config.actor_extractor = nil
+      config.instrumentation.http_requests = true
+      config.instrumentation.active_record = true
+      config.instrumentation.active_job = true
+      config.included_resources = []
+      config.excluded_resources = []
+      # config.actor_extractor = nil # Remove or update if needed
     end
 
     # Clear any captured events

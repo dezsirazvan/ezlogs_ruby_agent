@@ -1,313 +1,94 @@
 # Testing Guide
 
-EZLogs Ruby Agent provides comprehensive testing support to ensure your event tracking works correctly in all environments. This guide covers testing strategies, helpers, and best practices.
+EZLogs Ruby Agent provides comprehensive testing support to ensure your event tracking works correctly in all environments.
 
-## 🧪 Testing Philosophy
+## 🧪 Test Mode
 
-### Test-Driven Development
+### Enable Test Mode
 
-EZLogs is built with testing in mind:
-
-- **Zero-impact testing** - test without affecting your application
-- **Comprehensive test helpers** - easy setup and assertions
-- **Real-world scenarios** - test actual event flows
-- **Performance testing** - ensure no performance regression
-- **Security testing** - verify data protection
-
-### Testing Guarantees
-
-| Feature | Guarantee | Testing Support |
-|---------|-----------|-----------------|
-| **Event Capture** | 100% reliable | In-memory capture |
-| **Performance** | Sub-1ms overhead | Performance tests |
-| **Security** | PII protection | Security validation |
-| **Thread Safety** | Concurrent safe | Thread safety tests |
-| **Configuration** | Validated setup | Configuration tests |
-
-## 🚀 Quick Testing Setup
-
-### Basic Test Configuration
-
-Add to your test setup:
+Test mode captures events in memory instead of sending them to your Go server:
 
 ```ruby
-# spec/support/ezlogs_helper.rb
+# spec/spec_helper.rb
 RSpec.configure do |config|
   config.before(:each) do
-    # Enable test mode for all tests
     EzlogsRubyAgent.test_mode do
-      # All events are captured in memory
+      # Events captured in memory for testing
     end
   end
   
   config.after(:each) do
-    # Clean up after each test
     EzlogsRubyAgent.clear_captured_events
   end
 end
 ```
 
-### Simple Event Testing
+### Test Mode Features
+
+- **Memory Capture**: Events stored in memory instead of being delivered
+- **No Network Calls**: No HTTP requests to your Go server
+- **Fast Execution**: No network latency in tests
+- **Easy Assertions**: Simple API to check captured events
+
+## 📊 Event Assertions
+
+### Basic Event Testing
 
 ```ruby
 # spec/controllers/orders_controller_spec.rb
 RSpec.describe OrdersController, type: :controller do
   it "tracks order creation" do
-    post :create, params: { order: { total: 99.99 } }
+    post :create, params: { order: { amount: 100 } }
     
     events = EzlogsRubyAgent.captured_events
     expect(events).to include(
       hash_including(
-        event_type: 'order',
-        action: 'created',
-        metadata: hash_including(total: 99.99)
+        event_type: 'http.request',
+        action: 'POST /orders'
+      )
+    )
+    
+    expect(events).to include(
+      hash_including(
+        event_type: 'data.change',
+        action: 'order.create'
       )
     )
   end
 end
 ```
 
-## 📊 Test Modes
-
-### Test Mode
-
-Capture events in memory for assertions:
-
-```ruby
-# Enable test mode
-EzlogsRubyAgent.test_mode do
-  # All events are captured in memory
-  EzlogsRubyAgent.log_event(
-    event_type: 'test',
-    action: 'created',
-    actor: 'test',
-    subject: 'test'
-  )
-  
-  # Access captured events
-  events = EzlogsRubyAgent.captured_events
-  expect(events.length).to eq(1)
-end
-```
-
-### Debug Mode
-
-Enable debug mode for development testing:
-
-```ruby
-# Enable debug mode
-EzlogsRubyAgent.debug_mode = true
-
-# Events are logged to console and captured
-EzlogsRubyAgent.log_event(
-  event_type: 'test',
-  action: 'created',
-  actor: 'test',
-  subject: 'test'
-)
-
-# Check captured events
-events = EzlogsRubyAgent.captured_events
-puts "Captured #{events.length} events"
-```
-
-### Performance Test Mode
-
-Test performance characteristics:
-
-```ruby
-# Performance testing
-EzlogsRubyAgent.performance_test_mode do
-  start_time = Time.current
-  
-  1000.times do
-    EzlogsRubyAgent.log_event(
-      event_type: 'test',
-      action: 'created',
-      actor: 'test',
-      subject: 'test'
-    )
-  end
-  
-  duration = Time.current - start_time
-  events_per_second = 1000 / duration
-  
-  expect(events_per_second).to be > 1000  # > 1000 events/sec
-  expect(duration).to be < 1.0  # < 1 second for 1000 events
-end
-```
-
-## 🔧 Test Helpers
-
-### Event Assertions
-
-Easy assertions for event testing:
-
-```ruby
-# spec/support/ezlogs_matchers.rb
-RSpec::Matchers.define :have_logged_event do |event_type, action|
-  match do |actual|
-    events = EzlogsRubyAgent.captured_events
-    events.any? do |event|
-      event[:event_type] == event_type && event[:action] == action
-    end
-  end
-  
-  failure_message do |actual|
-    events = EzlogsRubyAgent.captured_events
-    "Expected to log #{event_type}:#{action}, but found: #{events.map { |e| "#{e[:event_type]}:#{e[:action]}" }}"
-  end
-end
-
-# Usage
-expect { create_order }.to have_logged_event('order', 'created')
-```
-
-### Event Count Assertions
-
-```ruby
-RSpec::Matchers.define :have_logged_events_count do |count|
-  match do |actual|
-    EzlogsRubyAgent.captured_events.length == count
-  end
-  
-  failure_message do |actual|
-    actual_count = EzlogsRubyAgent.captured_events.length
-    "Expected #{count} events, but found #{actual_count}"
-  end
-end
-
-# Usage
-expect { create_multiple_orders }.to have_logged_events_count(3)
-```
-
-### Event Content Assertions
-
-```ruby
-RSpec::Matchers.define :have_logged_event_with do |event_type, action, metadata|
-  match do |actual|
-    events = EzlogsRubyAgent.captured_events
-    events.any? do |event|
-      event[:event_type] == event_type &&
-      event[:action] == action &&
-      metadata.all? { |key, value| event[:metadata][key] == value }
-    end
-  end
-end
-
-# Usage
-expect { create_order }.to have_logged_event_with('order', 'created', { total: 99.99 })
-```
-
-## 📝 Testing Strategies
-
-### Unit Testing
-
-Test individual components:
+### Custom Event Testing
 
 ```ruby
 # spec/models/order_spec.rb
 RSpec.describe Order, type: :model do
-  it "tracks creation events" do
-    order = Order.create!(total: 99.99)
+  it "tracks custom business events" do
+    order = create(:order)
+    
+    # Trigger custom event
+    order.process_payment!
     
     events = EzlogsRubyAgent.captured_events
     expect(events).to include(
       hash_including(
-        event_type: 'database_change',
-        action: 'created',
-        subject: "Order_#{order.id}",
-        metadata: hash_including(
-          table: 'orders',
-          record_id: order.id
-        )
-      )
-    )
-  end
-  
-  it "tracks update events" do
-    order = Order.create!(total: 99.99)
-    EzlogsRubyAgent.clear_captured_events
-    
-    order.update!(total: 149.99)
-    
-    events = EzlogsRubyAgent.captured_events
-    expect(events).to include(
-      hash_including(
-        event_type: 'database_change',
-        action: 'updated',
-        metadata: hash_including(
-          changes: hash_including('total')
-        )
+        event_type: 'order.action',
+        action: 'payment.processed',
+        actor: hash_including(type: 'system', id: 'system'),
+        subject: hash_including(type: 'order', id: order.id.to_s)
       )
     )
   end
 end
 ```
 
-### Controller Testing
-
-Test HTTP request tracking:
-
-```ruby
-# spec/controllers/api/orders_controller_spec.rb
-RSpec.describe Api::OrdersController, type: :controller do
-  it "tracks API requests" do
-    get :index
-    
-    events = EzlogsRubyAgent.captured_events
-    expect(events).to include(
-      hash_including(
-        event_type: 'http_request',
-        action: 'GET',
-        subject: '/api/orders',
-        metadata: hash_including(
-          path: '/api/orders',
-          method: 'GET',
-          status: 200
-        )
-      )
-    )
-  end
-  
-  it "tracks request duration" do
-    get :index
-    
-    events = EzlogsRubyAgent.captured_events
-    http_event = events.find { |e| e[:event_type] == 'http_request' }
-    
-    expect(http_event[:metadata][:duration_ms]).to be > 0
-    expect(http_event[:metadata][:duration_ms]).to be < 1000  # < 1 second
-  end
-  
-  it "tracks error responses" do
-    allow(Order).to receive(:all).and_raise(StandardError, "Database error")
-    
-    expect { get :index }.to raise_error(StandardError)
-    
-    events = EzlogsRubyAgent.captured_events
-    expect(events).to include(
-      hash_including(
-        event_type: 'http_request',
-        metadata: hash_including(
-          status: 500,
-          error: 'StandardError: Database error'
-        )
-      )
-    )
-  end
-end
-```
-
-### Job Testing
-
-Test background job tracking:
+### Job Event Testing
 
 ```ruby
 # spec/jobs/process_order_job_spec.rb
 RSpec.describe ProcessOrderJob, type: :job do
   it "tracks job execution" do
-    order = Order.create!(total: 99.99)
+    order = create(:order)
     
     perform_enqueued_jobs do
       ProcessOrderJob.perform_later(order.id)
@@ -316,231 +97,75 @@ RSpec.describe ProcessOrderJob, type: :job do
     events = EzlogsRubyAgent.captured_events
     expect(events).to include(
       hash_including(
-        event_type: 'background_job',
-        action: 'started',
-        subject: /ProcessOrderJob_\d+/,
-        metadata: hash_including(
-          job_class: 'ProcessOrderJob',
-          queue: 'default'
-        )
-      ),
-      hash_including(
-        event_type: 'background_job',
-        action: 'completed',
-        subject: /ProcessOrderJob_\d+/,
-        metadata: hash_including(
-          duration_ms: be > 0
-        )
-      )
-    )
-  end
-  
-  it "tracks job failures" do
-    order = Order.create!(total: 99.99)
-    allow(Order).to receive(:find).and_raise(StandardError, "Job failed")
-    
-    expect {
-      perform_enqueued_jobs do
-        ProcessOrderJob.perform_later(order.id)
-      end
-    }.to raise_error(StandardError)
-    
-    events = EzlogsRubyAgent.captured_events
-    expect(events).to include(
-      hash_including(
-        event_type: 'background_job',
-        action: 'failed',
-        metadata: hash_including(
-          error: 'StandardError: Job failed'
-        )
+        event_type: 'job.execution',
+        action: 'ProcessOrderJob.completed',
+        subject: hash_including(type: 'job', id: 'ProcessOrderJob')
       )
     )
   end
 end
 ```
 
-### Integration Testing
+## 🔗 Correlation Testing
 
-Test complete workflows:
-
-```ruby
-# spec/integration/order_workflow_spec.rb
-RSpec.describe "Order Workflow", type: :integration do
-  it "tracks complete order lifecycle" do
-    # Create order
-    post "/api/orders", params: { order: { total: 99.99 } }
-    order_id = JSON.parse(response.body)["id"]
-    
-    # Process payment
-    post "/api/orders/#{order_id}/pay", params: { payment_method: "credit_card" }
-    
-    # Fulfill order
-    post "/api/orders/#{order_id}/fulfill"
-    
-    events = EzlogsRubyAgent.captured_events
-    
-    # Verify HTTP requests
-    expect(events).to include(
-      hash_including(event_type: 'http_request', action: 'POST', subject: '/api/orders'),
-      hash_including(event_type: 'http_request', action: 'POST', subject: "/api/orders/#{order_id}/pay"),
-      hash_including(event_type: 'http_request', action: 'POST', subject: "/api/orders/#{order_id}/fulfill")
-    )
-    
-    # Verify database changes
-    expect(events).to include(
-      hash_including(event_type: 'database_change', action: 'created', subject: "Order_#{order_id}"),
-      hash_including(event_type: 'database_change', action: 'updated', subject: "Order_#{order_id}")
-    )
-    
-    # Verify custom events
-    expect(events).to include(
-      hash_including(event_type: 'order', action: 'created'),
-      hash_including(event_type: 'payment', action: 'processed'),
-      hash_including(event_type: 'order', action: 'fulfilled')
-    )
-  end
-end
-```
-
-## 🔍 Advanced Testing
-
-### Correlation Testing
-
-Test business flow tracking:
+### Test Correlation Across Operations
 
 ```ruby
-# spec/integration/correlation_spec.rb
-RSpec.describe "Event Correlation", type: :integration do
-  it "tracks correlated events" do
-    order_id = "order_123"
-    
-    # Start a business flow
-    EzlogsRubyAgent.start_flow('order_fulfillment', order_id, {
-      customer_id: 'customer_456',
-      priority: 'high'
-    })
-    
-    # Log correlated events
-    EzlogsRubyAgent.log_event(
-      event_type: 'inventory',
-      action: 'reserved',
-      subject: order_id
-    )
-    
-    EzlogsRubyAgent.log_event(
-      event_type: 'shipping',
-      action: 'label_created',
-      subject: order_id
-    )
+# spec/integration/order_flow_spec.rb
+RSpec.describe "Order Flow", type: :request do
+  it "maintains correlation across HTTP → DB → Job" do
+    post "/orders", params: { order: { amount: 100 } }
     
     events = EzlogsRubyAgent.captured_events
     
     # All events should have the same correlation ID
-    correlation_ids = events.map { |e| e[:correlation_id] }.compact.uniq
+    correlation_ids = events.map { |e| e.dig(:correlation, :correlation_id) }.compact.uniq
     expect(correlation_ids.length).to eq(1)
     
-    # Verify flow context
-    flow_events = events.select { |e| e[:event_type] == 'flow_started' }
-    expect(flow_events).to include(
-      hash_including(
-        event_type: 'flow_started',
-        subject: order_id,
-        metadata: hash_including(
-          flow_type: 'order_fulfillment',
-          customer_id: 'customer_456',
-          priority: 'high'
-        )
-      )
-    )
+    # Verify event types
+    event_types = events.map { |e| e[:event_type] }
+    expect(event_types).to include('http.request')
+    expect(event_types).to include('data.change')
+    expect(event_types).to include('job.execution')
   end
 end
 ```
 
-### Performance Testing
-
-Test performance characteristics:
+### Test Custom Correlation
 
 ```ruby
-# spec/performance/ezlogs_performance_spec.rb
-RSpec.describe "EZLogs Performance", type: :performance do
-  it "creates events quickly" do
-    start_time = Time.current
+# spec/services/order_fulfillment_service_spec.rb
+RSpec.describe OrderFulfillmentService do
+  it "tracks business flow with correlation" do
+    order = create(:order)
     
-    1000.times do
-      EzlogsRubyAgent.log_event(
-        event_type: 'test',
-        action: 'created',
-        actor: 'test',
-        subject: 'test'
-      )
-    end
+    service = OrderFulfillmentService.new
+    service.fulfill_order(order.id)
     
-    duration = Time.current - start_time
-    events_per_second = 1000 / duration
+    events = EzlogsRubyAgent.captured_events
     
-    expect(events_per_second).to be > 1000  # > 1000 events/sec
-    expect(duration).to be < 1.0  # < 1 second for 1000 events
-  end
-  
-  it "uses minimal memory" do
-    initial_memory = GC.stat[:total_allocated_objects]
-    
-    1000.times do
-      EzlogsRubyAgent.log_event(
-        event_type: 'test',
-        action: 'created',
-        actor: 'test',
-        subject: 'test'
-      )
-    end
-    
-    final_memory = GC.stat[:total_allocated_objects]
-    memory_increase = final_memory - initial_memory
-    
-    expect(memory_increase).to be < 10000  # < 10k objects
-  end
-  
-  it "handles concurrent access" do
-    threads = []
-    events_per_thread = 100
-    
-    10.times do
-      threads << Thread.new do
-        events_per_thread.times do
-          EzlogsRubyAgent.log_event(
-            event_type: 'test',
-            action: 'created',
-            actor: 'test',
-            subject: 'test'
-          )
-        end
-      end
-    end
-    
-    threads.each(&:join)
-    
-    total_events = EzlogsRubyAgent.captured_events.length
-    expect(total_events).to eq(10 * events_per_thread)
+    # All events in the flow should have the same correlation ID
+    flow_events = events.select { |e| e[:event_type].start_with?('order.') }
+    correlation_ids = flow_events.map { |e| e.dig(:correlation, :correlation_id) }.compact.uniq
+    expect(correlation_ids.length).to eq(1)
   end
 end
 ```
 
-### Security Testing
+## 🔒 Security Testing
 
-Test security features:
+### Test PII Sanitization
 
 ```ruby
-# spec/security/ezlogs_security_spec.rb
-RSpec.describe "EZLogs Security", type: :security do
-  it "sanitizes PII fields" do
+# spec/security/event_sanitization_spec.rb
+RSpec.describe "Event Sanitization" do
+  it "sanitizes PII in events" do
     EzlogsRubyAgent.log_event(
-      event_type: 'user',
-      action: 'created',
-      actor: 'system',
-      subject: 'user_123',
+      event_type: 'user.action',
+      action: 'profile_updated',
       metadata: {
-        email: 'john@example.com',
-        password: 'secret123',
+        email: 'user@example.com',
+        phone: '+1-555-123-4567',
         ssn: '123-45-6789'
       }
     )
@@ -548,97 +173,267 @@ RSpec.describe "EZLogs Security", type: :security do
     events = EzlogsRubyAgent.captured_events
     event = events.last
     
-    expect(event[:metadata][:email]).to eq('***@example.com')
-    expect(event[:metadata][:password]).to eq('*********')
-    expect(event[:metadata][:ssn]).to eq('***-**-6789')
+    expect(event[:metadata][:email]).to eq('[REDACTED]')
+    expect(event[:metadata][:phone]).to eq('[REDACTED]')
+    expect(event[:metadata][:ssn]).to eq('[REDACTED]')
   end
   
-  it "rejects oversized payloads" do
-    large_metadata = { data: 'x' * (1024 * 1024 + 1) }  # > 1MB
+  it "excludes sensitive resources" do
+    # This should not be tracked
+    UserSession.create!(user_id: 1, session_data: 'sensitive')
     
-    expect {
-      EzlogsRubyAgent.log_event(
-        event_type: 'test',
-        action: 'created',
-        actor: 'test',
-        subject: 'test',
-        metadata: large_metadata
-      )
-    }.to raise_error(EzlogsRubyAgent::SecurityError, /Payload too large/)
+    events = EzlogsRubyAgent.captured_events
+    session_events = events.select { |e| e[:event_type] == 'data.change' && e[:metadata][:model] == 'UserSession' }
+    
+    expect(session_events).to be_empty
+  end
+end
+```
+
+### Test Custom PII Patterns
+
+```ruby
+# spec/security/custom_pii_patterns_spec.rb
+RSpec.describe "Custom PII Patterns" do
+  before do
+    EzlogsRubyAgent.configure do |config|
+      config.security do |security|
+        security.custom_pii_patterns = {
+          'employee_id' => /\bEMP-\d{6}\b/
+        }
+      end
+    end
   end
   
-  it "excludes sensitive fields" do
+  it "sanitizes custom PII patterns" do
     EzlogsRubyAgent.log_event(
-      event_type: 'user',
+      event_type: 'employee.action',
       action: 'created',
-      actor: 'system',
-      subject: 'user_123',
       metadata: {
-        id: 123,
-        name: 'John Doe',
-        password: 'secret123',
-        private_key: 'abc123'
+        employee_id: 'EMP-123456'
       }
     )
     
     events = EzlogsRubyAgent.captured_events
     event = events.last
     
-    expect(event[:metadata]).to include('id', 'name')
-    expect(event[:metadata]).not_to include('password', 'private_key')
+    expect(event[:metadata][:employee_id]).to eq('[REDACTED]')
   end
 end
 ```
 
-## 🔧 Test Configuration
+## ⚡ Performance Testing
 
-### Environment-Specific Testing
+### Test Event Creation Performance
 
 ```ruby
-# spec/support/ezlogs_test_config.rb
-RSpec.configure do |config|
-  config.before(:suite) do
-    # Configure EZLogs for testing
-    EzlogsRubyAgent.configure do |c|
-      c.service_name = 'test-app'
-      c.environment = 'test'
-      
-      # Disable actual delivery in tests
-      c.delivery do |delivery|
-        delivery.endpoint = nil
-      end
-      
-      # Enable test mode
-      c.test_mode = true
+# spec/performance/event_creation_spec.rb
+RSpec.describe "Event Creation Performance", type: :performance do
+  it "creates events quickly" do
+    times = []
+    
+    100.times do
+      start_time = Time.now
+      EzlogsRubyAgent.log_event(
+        event_type: 'test.event',
+        action: 'created',
+        actor: { type: 'system', id: 'test' }
+      )
+      end_time = Time.now
+      times << (end_time - start_time) * 1000
+    end
+    
+    avg_time = times.sum / times.length
+    p95_time = times.sort[times.length * 0.95]
+    
+    expect(avg_time).to be < 1.0  # < 1ms average
+    expect(p95_time).to be < 2.0  # < 2ms 95th percentile
+  end
+end
+```
+
+### Test Memory Usage
+
+```ruby
+# spec/performance/memory_usage_spec.rb
+RSpec.describe "Memory Usage", type: :performance do
+  it "does not leak memory" do
+    initial_memory = get_memory_usage
+    
+    1000.times do
+      EzlogsRubyAgent.log_event(
+        event_type: 'test.event',
+        action: 'created',
+        actor: { type: 'system', id: 'test' }
+      )
+    end
+    
+    final_memory = get_memory_usage
+    memory_growth = final_memory - initial_memory
+    
+    # Memory growth should be minimal
+    expect(memory_growth).to be < 10  # < 10MB growth
+  end
+  
+  private
+  
+  def get_memory_usage
+    `ps -o rss= -p #{Process.pid}`.to_i / 1024.0
+  end
+end
+```
+
+## 🔧 Configuration Testing
+
+### Test Configuration Loading
+
+```ruby
+# spec/configuration/loading_spec.rb
+RSpec.describe "Configuration Loading" do
+  it "loads configuration correctly" do
+    EzlogsRubyAgent.configure do |config|
+      config.service_name = 'test-app'
+      config.environment = 'test'
+    end
+    
+    expect(EzlogsRubyAgent.config.service_name).to eq('test-app')
+    expect(EzlogsRubyAgent.config.environment).to eq('test')
+  end
+  
+  it "loads from environment variables" do
+    ClimateControl.modify(EZLOGS_SERVICE_NAME: 'env-app') do
+      config = EzlogsRubyAgent::Configuration.new
+      expect(config.service_name).to eq('env-app')
     end
   end
 end
 ```
+
+### Test Configuration Validation
+
+```ruby
+# spec/configuration/validation_spec.rb
+RSpec.describe "Configuration Validation" do
+  it "validates required settings" do
+    expect {
+      EzlogsRubyAgent.configure do |config|
+        config.service_name = nil
+        config.environment = nil
+      end
+    }.not_to raise_error
+    
+    # Validation happens in Railtie, not in configuration
+  end
+end
+```
+
+## 🚀 Integration Testing
+
+### Test Complete User Journey
+
+```ruby
+# spec/integration/complete_user_journey_spec.rb
+RSpec.describe "Complete User Journey", type: :request do
+  it "tracks complete order flow" do
+    user = create(:user)
+    sign_in user
+    
+    # 1. User creates order
+    post "/orders", params: { order: { amount: 100 } }
+    
+    # 2. User views order
+    get "/orders/#{Order.last.id}"
+    
+    # 3. User cancels order
+    delete "/orders/#{Order.last.id}"
+    
+    events = EzlogsRubyAgent.captured_events
+    
+    # Verify all expected events
+    expect(events).to include(
+      hash_including(event_type: 'http.request', action: 'POST /orders')
+    )
+    
+    expect(events).to include(
+      hash_including(event_type: 'data.change', action: 'order.create')
+    )
+    
+    expect(events).to include(
+      hash_including(event_type: 'http.request', action: 'GET /orders/')
+    )
+    
+    expect(events).to include(
+      hash_including(event_type: 'http.request', action: 'DELETE /orders/')
+    )
+    
+    expect(events).to include(
+      hash_including(event_type: 'data.change', action: 'order.destroy')
+    )
+    
+    # Verify correlation
+    correlation_ids = events.map { |e| e.dig(:correlation, :correlation_id) }.compact.uniq
+    expect(correlation_ids.length).to eq(1)
+  end
+end
+```
+
+### Test Background Job Integration
+
+```ruby
+# spec/integration/background_jobs_spec.rb
+RSpec.describe "Background Job Integration", type: :request do
+  it "tracks job execution from HTTP request" do
+    post "/orders", params: { order: { amount: 100 } }
+    
+    # Process background jobs
+    perform_enqueued_jobs
+    
+    events = EzlogsRubyAgent.captured_events
+    
+    # Should have HTTP, DB, and job events
+    event_types = events.map { |e| e[:event_type] }
+    expect(event_types).to include('http.request')
+    expect(event_types).to include('data.change')
+    expect(event_types).to include('job.execution')
+    
+    # All should have same correlation ID
+    correlation_ids = events.map { |e| e.dig(:correlation, :correlation_id) }.compact.uniq
+    expect(correlation_ids.length).to eq(1)
+  end
+end
+```
+
+## 🧹 Test Helpers
 
 ### Custom Test Helpers
 
 ```ruby
 # spec/support/ezlogs_test_helpers.rb
 module EzlogsTestHelpers
-  def capture_events
-    EzlogsRubyAgent.clear_captured_events
-    yield
-    EzlogsRubyAgent.captured_events
-  end
-  
-  def assert_event_logged(event_type, action, metadata = {})
+  def expect_event(event_type:, action:, **attributes)
     events = EzlogsRubyAgent.captured_events
     matching_events = events.select do |event|
       event[:event_type] == event_type &&
       event[:action] == action &&
-      metadata.all? { |key, value| event[:metadata][key] == value }
+      attributes.all? { |key, value| event[key] == value }
     end
     
     expect(matching_events).not_to be_empty
   end
   
-  def assert_no_events_logged
-    expect(EzlogsRubyAgent.captured_events).to be_empty
+  def expect_no_event(event_type:, action:)
+    events = EzlogsRubyAgent.captured_events
+    matching_events = events.select do |event|
+      event[:event_type] == event_type && event[:action] == action
+    end
+    
+    expect(matching_events).to be_empty
+  end
+  
+  def expect_correlation_across_events
+    events = EzlogsRubyAgent.captured_events
+    correlation_ids = events.map { |e| e.dig(:correlation, :correlation_id) }.compact.uniq
+    expect(correlation_ids.length).to eq(1)
   end
 end
 
@@ -647,98 +442,213 @@ RSpec.configure do |config|
 end
 ```
 
-## 📊 Test Data Management
-
-### Event Factories
+### Using Test Helpers
 
 ```ruby
-# spec/factories/ezlogs_events.rb
-FactoryBot.define do
-  factory :ezlogs_event, class: Hash do
-    event_type { 'test' }
-    action { 'created' }
-    actor { 'test_user' }
-    subject { 'test_subject' }
-    metadata { {} }
-    timestamp { Time.current }
+# spec/controllers/orders_controller_spec.rb
+RSpec.describe OrdersController, type: :controller do
+  it "tracks order creation with helpers" do
+    post :create, params: { order: { amount: 100 } }
     
-    initialize_with { attributes }
+    expect_event(
+      event_type: 'http.request',
+      action: 'POST /orders'
+    )
+    
+    expect_event(
+      event_type: 'data.change',
+      action: 'order.create'
+    )
+    
+    expect_correlation_across_events
   end
   
-  factory :order_event, parent: :ezlogs_event do
-    event_type { 'order' }
-    action { 'created' }
-    metadata { { total: 99.99, currency: 'USD' } }
-  end
-  
-  factory :user_event, parent: :ezlogs_event do
-    event_type { 'user' }
-    action { 'registered' }
-    metadata { { email: 'test@example.com', plan: 'premium' } }
+  it "does not track sensitive operations" do
+    post "/admin/sensitive_operation"
+    
+    expect_no_event(
+      event_type: 'data.change',
+      action: 'sensitive_data.create'
+    )
   end
 end
 ```
 
-### Test Data Cleanup
+## 🔍 Debug Testing
+
+### Enable Debug Mode in Tests
 
 ```ruby
-# spec/support/ezlogs_cleanup.rb
+# spec/spec_helper.rb
 RSpec.configure do |config|
   config.before(:each) do
-    # Clear captured events before each test
-    EzlogsRubyAgent.clear_captured_events
-  end
-  
-  config.after(:each) do
-    # Verify no events leaked between tests
-    expect(EzlogsRubyAgent.captured_events).to be_empty
-  end
-  
-  config.after(:suite) do
-    # Clean up any remaining test data
-    EzlogsRubyAgent.shutdown
+    EzlogsRubyAgent.configure do |config|
+      config.debug_mode = true
+    end
+    
+    EzlogsRubyAgent.test_mode do
+      # Events captured in memory
+    end
   end
 end
 ```
 
-## 🚨 Testing Best Practices
+### Debug Event Capture
 
-### Test Organization
+```ruby
+# spec/debug/event_debugging_spec.rb
+RSpec.describe "Event Debugging" do
+  it "provides debug information" do
+    EzlogsRubyAgent.log_event(
+      event_type: 'test.event',
+      action: 'created',
+      actor: { type: 'system', id: 'test' }
+    )
+    
+    events = EzlogsRubyAgent.captured_events
+    event = events.last
+    
+    # Debug information should be available
+    expect(event).to include(:event_id, :timestamp, :correlation)
+    expect(event[:platform]).to include(:service, :environment, :agent_version)
+  end
+end
+```
 
-1. **Group related tests** by feature or component
-2. **Use descriptive test names** that explain the behavior
-3. **Test both success and failure scenarios**
-4. **Test edge cases** and boundary conditions
+## 📊 Test Coverage
 
-### Test Performance
+### Test All Event Types
 
-1. **Use test mode** to avoid network calls
-2. **Clear events between tests** to prevent interference
-3. **Mock external dependencies** when testing
-4. **Use factories** for consistent test data
+```ruby
+# spec/coverage/event_types_spec.rb
+RSpec.describe "Event Type Coverage" do
+  it "tests all event types" do
+    # HTTP events
+    get "/health"
+    expect_event(event_type: 'http.request', action: 'GET /health')
+    
+    # Database events
+    user = create(:user)
+    expect_event(event_type: 'data.change', action: 'user.create')
+    
+    # Job events
+    perform_enqueued_jobs do
+      TestJob.perform_later
+    end
+    expect_event(event_type: 'job.execution', action: 'TestJob.completed')
+    
+    # Custom events
+    EzlogsRubyAgent.log_event(
+      event_type: 'custom.event',
+      action: 'test',
+      actor: { type: 'system', id: 'test' }
+    )
+    expect_event(event_type: 'custom.event', action: 'test')
+  end
+end
+```
 
-### Test Coverage
+### Test Error Scenarios
 
-1. **Test all event types** (HTTP, database, jobs, custom)
-2. **Test configuration options** and their effects
-3. **Test security features** thoroughly
-4. **Test performance characteristics** regularly
+```ruby
+# spec/coverage/error_scenarios_spec.rb
+RSpec.describe "Error Scenarios" do
+  it "handles invalid events gracefully" do
+    # Should not raise error
+    expect {
+      EzlogsRubyAgent.log_event(
+        event_type: nil,  # Invalid
+        action: nil       # Invalid
+      )
+    }.not_to raise_error
+  end
+  
+  it "handles oversized events" do
+    large_data = 'x' * (1024 * 1024 + 1)  # > 1MB
+    
+    expect {
+      EzlogsRubyAgent.log_event(
+        event_type: 'test.event',
+        action: 'created',
+        metadata: { data: large_data }
+      )
+    }.not_to raise_error
+  end
+end
+```
 
-### Test Maintenance
+## 🚀 Performance Test Suites
 
-1. **Keep tests focused** on single behaviors
-2. **Update tests** when API changes
-3. **Review test failures** carefully
-4. **Document test patterns** for team consistency
+### Load Testing
+
+```ruby
+# spec/performance/load_test_spec.rb
+RSpec.describe "Load Testing", type: :performance do
+  it "handles high event volume" do
+    start_time = Time.now
+    
+    1000.times do
+      EzlogsRubyAgent.log_event(
+        event_type: 'load.test',
+        action: 'event.created',
+        actor: { type: 'system', id: 'load_test' }
+      )
+    end
+    
+    duration = Time.now - start_time
+    events_per_second = 1000 / duration
+    
+    expect(events_per_second).to be > 1000  # > 1000 events/sec
+    expect(duration).to be < 1.0  # < 1 second for 1000 events
+  end
+end
+```
+
+### Memory Testing
+
+```ruby
+# spec/performance/memory_test_spec.rb
+RSpec.describe "Memory Testing", type: :performance do
+  it "maintains stable memory usage" do
+    initial_memory = get_memory_usage
+    
+    # Create events for 1 minute
+    start_time = Time.now
+    event_count = 0
+    
+    while Time.now - start_time < 60
+      EzlogsRubyAgent.log_event(
+        event_type: 'memory.test',
+        action: 'event.created',
+        actor: { type: 'system', id: 'memory_test' }
+      )
+      event_count += 1
+    end
+    
+    final_memory = get_memory_usage
+    memory_growth = final_memory - initial_memory
+    
+    # Memory growth should be minimal
+    expect(memory_growth).to be < 50  # < 50MB growth
+    expect(event_count).to be > 1000  # Should handle many events
+  end
+  
+  private
+  
+  def get_memory_usage
+    `ps -o rss= -p #{Process.pid}`.to_i / 1024.0
+  end
+end
+```
 
 ## 📚 Next Steps
 
-- **[Configuration Guide](configuration.md)** - Complete configuration options
+- **[Getting Started](getting-started.md)** - Basic setup and usage
+- **[Configuration Guide](configuration.md)** - Advanced configuration options
 - **[Performance Guide](performance.md)** - Optimization and tuning
 - **[Security Guide](security.md)** - Security best practices
 - **[API Reference](../lib/ezlogs_ruby_agent.rb)** - Complete API documentation
-- **[Examples](../examples/)** - Complete example applications
 
 ---
 
-**Testing is the foundation of reliable event tracking.** Use these guidelines to ensure your EZLogs implementation works correctly in all scenarios! 🧪 
+**Your EZLogs Ruby Agent is now thoroughly tested and ready for production!** 🧪 

@@ -1,3 +1,4 @@
+require 'json'
 require 'ezlogs_ruby_agent/railtie' if defined?(Rails)
 require 'ezlogs_ruby_agent/configuration'
 require 'ezlogs_ruby_agent/universal_event'
@@ -36,10 +37,10 @@ module EzlogsRubyAgent
   def self.processor
     @processor ||= EventProcessor.new(
       sample_rate: config.performance.sample_rate,
-      max_payload_size: config.security.max_payload_size,
+      max_payload_size: config.security.max_event_size,
       auto_detect_pii: config.security.auto_detect_pii,
-      sanitize_fields: config.security.sanitize_fields,
-      custom_patterns: config.security.custom_patterns
+      sanitize_fields: config.security.sensitive_fields,
+      custom_patterns: config.security.custom_pii_patterns
     )
   end
 

@@ -1,192 +1,143 @@
 # Security Guide
 
-Security is paramount when tracking application events. EZLogs Ruby Agent provides comprehensive security features to protect sensitive data and ensure compliance with privacy regulations.
+EZLogs Ruby Agent is designed with security-first principles to protect sensitive data and ensure compliance with privacy regulations.
 
-## 🛡️ Security Philosophy
-
-### Privacy by Design
-
-EZLogs is built with these security principles:
-
-- **Automatic PII detection** - identifies sensitive data automatically
-- **Configurable sanitization** - flexible data protection strategies
-- **Zero sensitive data by default** - opt-in approach to data collection
-- **Compliance ready** - GDPR, CCPA, and other privacy regulations
-- **Audit trail** - track what data is being collected and processed
-
-### Security Guarantees
-
-| Feature | Guarantee | Implementation |
-|---------|-----------|----------------|
-| **PII Detection** | Automatic identification | Regex patterns + ML models |
-| **Data Sanitization** | Configurable protection | Masking, removal, hashing |
-| **Payload Limits** | Size restrictions | Configurable limits |
-| **Field Filtering** | Selective collection | Whitelist/blacklist |
-| **Encryption** | TLS in transit | HTTPS delivery |
-| **Access Control** | API key authentication | Secure credentials |
-
-## 🔍 PII Detection & Protection
+## 🔒 Security Features
 
 ### Automatic PII Detection
 
-EZLogs automatically detects common types of personally identifiable information:
+EZLogs Ruby Agent automatically detects and sanitizes Personally Identifiable Information (PII):
+
+- **Email addresses**: `user@example.com`
+- **Phone numbers**: `+1-555-123-4567`
+- **Social Security Numbers**: `123-45-6789`
+- **Credit card numbers**: `4111-1111-1111-1111`
+- **IP addresses**: `192.168.1.100`
+- **Custom patterns**: Configurable regex patterns
+
+### Zero-Config Security
+
+Security features are enabled by default:
 
 ```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    # Enable automatic PII detection
-    security.auto_detect_pii = true
-  end
+# config/initializers/ezlogs_ruby_agent.rb
+EzlogsRubyAgent.configure do |config|
+  # Security is enabled by default
+  # No additional configuration needed
 end
 ```
 
-**Automatically Detected PII Types:**
-- Email addresses
-- Phone numbers
-- Social Security Numbers (US)
-- Credit card numbers
-- IP addresses
-- MAC addresses
-- API keys and tokens
-- Passwords and secrets
+## 🛡️ PII Protection
+
+### Automatic Detection
+
+EZLogs Ruby Agent automatically detects common PII patterns:
+
+```ruby
+# These will be automatically detected and sanitized
+EzlogsRubyAgent.log_event(
+  event_type: 'user.action',
+  action: 'profile_updated',
+  actor: { type: 'user', id: '123' },
+  metadata: {
+    email: 'user@example.com',           # → [REDACTED]
+    phone: '+1-555-123-4567',            # → [REDACTED]
+    ssn: '123-45-6789',                  # → [REDACTED]
+    credit_card: '4111-1111-1111-1111'   # → [REDACTED]
+  }
+)
+```
 
 ### Custom PII Patterns
 
-Define custom patterns for your specific data types:
+Define custom patterns for your domain-specific sensitive data:
 
 ```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    security.custom_patterns = {
-      # Custom API key pattern
-      'api_key' => /\b[A-Za-z0-9]{32}\b/,
-      
-      # Custom phone number pattern
-      'phone' => /\b\d{3}-\d{3}-\d{4}\b/,
-      
-      # Custom employee ID pattern
+EzlogsRubyAgent.configure do |config|
+  config.security do |security|
+    security.auto_detect_pii = true
+    security.custom_pii_patterns = {
       'employee_id' => /\bEMP-\d{6}\b/,
-      
-      # Custom license plate pattern
-      'license_plate' => /\b[A-Z]{3}-\d{3}\b/,
-      
-      # Custom account number pattern
-      'account_number' => /\bACC-\d{8}-\d{4}\b/
+      'customer_id' => /\bCUST-\d{8}\b/,
+      'api_key' => /\b[A-Za-z0-9]{32}\b/,
+      'license_plate' => /\b[A-Z]{3}-\d{3}\b/
     }
   end
 end
 ```
 
-### Manual Field Sanitization
+### Sensitive Field Filtering
 
-Explicitly specify fields to sanitize:
+Explicitly mark fields as sensitive:
 
 ```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    security.sanitize_fields = [
+EzlogsRubyAgent.configure do |config|
+  config.security do |security|
+    security.sensitive_fields = [
       'password',
       'token',
-      'secret',
       'api_key',
+      'secret',
       'private_key',
-      'ssn',
-      'credit_card',
-      'email',
-      'phone',
-      'address',
-      'date_of_birth'
+      'session_id',
+      'auth_token'
     ]
   end
 end
 ```
 
-## 🎭 Data Sanitization Methods
+## 🔐 Field Filtering
 
-### Masking (Default)
+### Include-Only Filtering
 
-Replace sensitive data with asterisks:
+Only track specific resources and fields:
 
 ```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    security.sanitization_method = :mask
-    security.mask_character = '*'  # Default
-    
-    # Example: "password123" becomes "***********"
-    # Example: "john@example.com" becomes "***@example.com"
-  end
+EzlogsRubyAgent.configure do |config|
+  # Only track these resources
+  config.included_resources = ['order', 'user', 'payment']
+  
+  # Only include these fields in metadata
+  config.included_fields = ['id', 'status', 'amount', 'created_at']
 end
 ```
 
-### Removal
+### Exclude Filtering
 
-Completely remove sensitive fields:
+Exclude sensitive resources and fields:
 
 ```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    security.sanitization_method = :remove
-    
-    # Example: password field is completely removed from events
-  end
+EzlogsRubyAgent.configure do |config|
+  # Exclude these resources entirely
+  config.excluded_resources = [
+    'temp',
+    'cache',
+    'session',
+    'password_reset',
+    'admin_log'
+  ]
+  
+  # Exclude these fields from all events
+  config.excluded_fields = [
+    'password',
+    'token',
+    'secret',
+    'private_data'
+  ]
 end
 ```
 
-### Hashing
+## 📏 Size Limits
 
-Hash sensitive data for analytics while preserving uniqueness:
+### Event Size Limits
 
-```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    security.sanitization_method = :hash
-    security.hash_algorithm = :sha256  # :md5, :sha1, :sha256
-    
-    # Example: "password123" becomes "ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f"
-  end
-end
-```
-
-### Custom Sanitization
-
-Define custom sanitization logic:
+Prevent oversized events that could impact performance:
 
 ```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    security.custom_sanitizer = ->(field_name, value) do
-      case field_name
-      when 'email'
-        # Keep domain, mask local part
-        local, domain = value.split('@')
-        "#{local[0]}***@#{domain}"
-      when 'phone'
-        # Keep last 4 digits
-        "***-***-#{value[-4..-1]}"
-      when 'credit_card'
-        # Keep last 4 digits
-        "****-****-****-#{value[-4..-1]}"
-      else
-        # Default masking
-        '*' * value.length
-      end
-    end
-  end
-end
-```
-
-## 📏 Payload & Field Limits
-
-### Payload Size Limits
-
-Prevent oversized payloads that could impact performance:
-
-```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    # Maximum payload size (1MB)
-    security.max_payload_size = 1024 * 1024
+EzlogsRubyAgent.configure do |config|
+  config.security do |security|
+    # Maximum event size (1MB)
+    security.max_event_size = 1024 * 1024
     
     # Maximum field value size (1KB)
     security.max_field_size = 1024
@@ -197,198 +148,205 @@ EzlogsRubyAgent.configure do |c|
 end
 ```
 
-### Field Value Truncation
+### Payload Validation
 
-Automatically truncate oversized values:
+Events exceeding limits are automatically truncated or rejected:
 
 ```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    # Truncate oversized values
-    security.truncate_oversized_values = true
-    
-    # Truncation indicator
-    security.truncation_indicator = '...'
-    
-    # Example: "very long text..." instead of rejecting the event
+# This event would be truncated if it exceeds limits
+EzlogsRubyAgent.log_event(
+  event_type: 'data.export',
+  action: 'completed',
+  actor: { type: 'user', id: '123' },
+  metadata: {
+    # Large data will be truncated to max_field_size
+    export_data: very_large_data_object
+  }
+)
+```
+
+## 🔍 Sanitization Methods
+
+### Default Sanitization
+
+By default, sensitive data is replaced with `[REDACTED]`:
+
+```ruby
+# Input
+metadata: { email: 'user@example.com', phone: '+1-555-123-4567' }
+
+# Output
+metadata: { email: '[REDACTED]', phone: '[REDACTED]' }
+```
+
+### Custom Sanitization
+
+Configure custom sanitization methods:
+
+```ruby
+EzlogsRubyAgent.configure do |config|
+  config.security do |security|
+    # Custom sanitization function
+    security.sanitization_method = ->(value, field_name) do
+      case field_name
+      when 'email'
+        # Mask email: user@example.com → u***@example.com
+        parts = value.split('@')
+        "#{parts[0][0]}***@#{parts[1]}"
+      when 'phone'
+        # Mask phone: +1-555-123-4567 → +1-555-***-4567
+        value.gsub(/(\+\d{1,3}-\d{3}-)\d{3}(-\d{4})/, '\1***\2')
+      else
+        '[REDACTED]'
+      end
+    end
   end
 end
 ```
 
-## 🚫 Field Filtering
+## 🚫 Data Exclusion
 
-### Exclusion Lists
+### Complete Resource Exclusion
 
-Always exclude sensitive fields:
+Exclude entire resources from tracking:
 
 ```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    security.exclude_fields = [
-      'password',
-      'password_confirmation',
-      'secret',
-      'private_key',
-      'session_data',
-      'csrf_token',
-      'authentication_token',
-      'reset_token',
-      'verification_code'
+EzlogsRubyAgent.configure do |config|
+  # Never track these models
+  config.excluded_resources = [
+    'UserSession',
+    'PasswordReset',
+    'AdminAuditLog',
+    'SensitiveData'
+  ]
+end
+```
+
+### Conditional Exclusion
+
+Exclude data based on conditions:
+
+```ruby
+# In your models
+class User < ApplicationRecord
+  after_create :track_user_creation
+  
+  private
+  
+  def track_user_creation
+    # Only track non-sensitive user creation
+    return if sensitive_user?
+    
+    EzlogsRubyAgent.log_event(
+      event_type: 'user.action',
+      action: 'created',
+      actor: { type: 'system', id: 'system' },
+      subject: { type: 'user', id: id },
+      metadata: {
+        role: role,
+        status: status
+        # Sensitive fields like email, password are excluded
+      }
+    )
+  end
+  
+  def sensitive_user?
+    role == 'admin' || email.include?('sensitive')
+  end
+end
+```
+
+## 🔒 Environment-Specific Security
+
+### Development Environment
+
+```ruby
+# config/environments/development.rb
+EzlogsRubyAgent.configure do |config|
+  config.security do |security|
+    # More permissive in development
+    security.auto_detect_pii = false
+    security.max_event_size = 2 * 1024 * 1024  # 2MB
+  end
+  
+  # Enable debug mode to see what's being sanitized
+  config.debug_mode = true
+end
+```
+
+### Production Environment
+
+```ruby
+# config/environments/production.rb
+EzlogsRubyAgent.configure do |config|
+  config.security do |security|
+    # Strict security in production
+    security.auto_detect_pii = true
+    security.max_event_size = 1024 * 1024  # 1MB
+    security.sensitive_fields = [
+      'password', 'token', 'api_key', 'secret', 'ssn',
+      'credit_card', 'private_key', 'session_data'
     ]
   end
+  
+  # Disable debug mode
+  config.debug_mode = false
 end
 ```
 
-### Inclusion Lists (Whitelist)
+## 🧪 Security Testing
 
-Only include specific fields:
+### Test Mode Security
+
+Test security features without sending data:
 
 ```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    # When enabled, only these fields are included
-    security.include_only_fields = [
-      'id',
-      'name',
-      'email',
-      'status',
-      'created_at',
-      'updated_at'
-    ]
+# spec/spec_helper.rb
+RSpec.configure do |config|
+  config.before(:each) do
+    EzlogsRubyAgent.test_mode do
+      # Events captured in memory for testing
+    end
+  end
+  
+  config.after(:each) do
+    EzlogsRubyAgent.clear_captured_events
   end
 end
 ```
 
-### Nested Field Filtering
-
-Filter nested object fields:
+### Security Validation Tests
 
 ```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    security.exclude_nested_fields = [
-      'user.password',
-      'user.private_key',
-      'order.payment.token',
-      'config.secrets.api_key',
-      'metadata.sensitive_data'
-    ]
+# spec/security/event_sanitization_spec.rb
+RSpec.describe "Event Sanitization" do
+  it "sanitizes PII in events" do
+    EzlogsRubyAgent.log_event(
+      event_type: 'user.action',
+      action: 'profile_updated',
+      metadata: {
+        email: 'user@example.com',
+        phone: '+1-555-123-4567',
+        ssn: '123-45-6789'
+      }
+    )
+    
+    events = EzlogsRubyAgent.captured_events
+    event = events.last
+    
+    expect(event[:metadata][:email]).to eq('[REDACTED]')
+    expect(event[:metadata][:phone]).to eq('[REDACTED]')
+    expect(event[:metadata][:ssn]).to eq('[REDACTED]')
   end
-end
-```
-
-## 🔐 Authentication & Encryption
-
-### API Key Authentication
-
-Secure delivery with API keys:
-
-```ruby
-EzlogsRubyAgent.configure do |c|
-  c.delivery do |delivery|
-    # API key from environment variable
-    delivery.api_key = ENV['EZLOGS_API_KEY']
+  
+  it "excludes sensitive resources" do
+    # This should not be tracked
+    UserSession.create!(user_id: 1, session_data: 'sensitive')
     
-    # Custom headers for authentication
-    delivery.custom_headers = {
-      'Authorization' => "Bearer #{ENV['EZLOGS_API_KEY']}",
-      'X-API-Key' => ENV['EZLOGS_API_KEY']
-    }
-  end
-end
-```
-
-### TLS Encryption
-
-Ensure secure transmission:
-
-```ruby
-EzlogsRubyAgent.configure do |c|
-  c.delivery do |delivery|
-    # Force HTTPS
-    delivery.require_ssl = true
+    events = EzlogsRubyAgent.captured_events
+    session_events = events.select { |e| e[:event_type] == 'data.change' && e[:metadata][:model] == 'UserSession' }
     
-    # Custom SSL configuration
-    delivery.ssl_verify_mode = OpenSSL::SSL::VERIFY_PEER
-    delivery.ssl_ca_file = '/path/to/ca-certificates.crt'
-  end
-end
-```
-
-### Basic Authentication
-
-Use username/password authentication:
-
-```ruby
-EzlogsRubyAgent.configure do |c|
-  c.delivery do |delivery|
-    delivery.username = ENV['EZLOGS_USERNAME']
-    delivery.password = ENV['EZLOGS_PASSWORD']
-  end
-end
-```
-
-## 📋 Compliance Features
-
-### GDPR Compliance
-
-Configure for GDPR requirements:
-
-```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    # Enable GDPR compliance features
-    security.gdpr_compliance = true
-    
-    # Data retention settings
-    security.data_retention_days = 90
-    
-    # Right to be forgotten
-    security.enable_data_deletion = true
-    
-    # Data portability
-    security.enable_data_export = true
-  end
-end
-```
-
-### CCPA Compliance
-
-Configure for California Consumer Privacy Act:
-
-```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    # Enable CCPA compliance features
-    security.ccpa_compliance = true
-    
-    # Opt-out mechanisms
-    security.enable_opt_out = true
-    
-    # Data disclosure requirements
-    security.enable_data_disclosure = true
-  end
-end
-```
-
-### HIPAA Compliance
-
-Configure for healthcare data:
-
-```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    # Enable HIPAA compliance features
-    security.hipaa_compliance = true
-    
-    # PHI detection and protection
-    security.detect_phi = true
-    
-    # Audit logging
-    security.enable_audit_logging = true
-    
-    # Access controls
-    security.require_authentication = true
+    expect(session_events).to be_empty
   end
 end
 ```
@@ -397,216 +355,181 @@ end
 
 ### Security Event Logging
 
-Track security-related events:
+Monitor security-related events:
 
 ```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    # Log security events
-    security.log_security_events = true
-    
-    # Security event types to log
-    security.security_event_types = [
-      'pii_detected',
-      'field_sanitized',
-      'payload_rejected',
-      'authentication_failed',
-      'access_denied'
-    ]
+# Log when sensitive data is detected
+EzlogsRubyAgent.configure do |config|
+  config.security do |security|
+    security.log_sanitization_events = true
+    security.log_excluded_resources = true
   end
 end
 ```
 
 ### Security Metrics
 
-Monitor security metrics:
+Track security metrics:
 
 ```ruby
-# Get security metrics
-security_metrics = EzlogsRubyAgent.security_monitor.metrics
-
-puts "PII fields detected: #{security_metrics[:pii_fields_detected]}"
-puts "Fields sanitized: #{security_metrics[:fields_sanitized]}"
-puts "Payloads rejected: #{security_metrics[:payloads_rejected]}"
-puts "Authentication failures: #{security_metrics[:auth_failures]}"
+# Get security statistics
+security_stats = EzlogsRubyAgent.security_stats
+puts "PII Detections: #{security_stats[:pii_detections]}"
+puts "Sanitized Events: #{security_stats[:sanitized_events]}"
+puts "Excluded Resources: #{security_stats[:excluded_resources]}"
+puts "Oversized Events: #{security_stats[:oversized_events]}"
 ```
 
-### Security Alerts
+## 🚨 Security Best Practices
 
-Set up security alerts:
+### 1. Always Enable PII Detection
 
 ```ruby
-EzlogsRubyAgent.configure do |c|
-  c.security do |security|
-    # Alert on security events
-    security.enable_security_alerts = true
-    
-    # Alert thresholds
-    security.alert_thresholds = {
-      pii_detected: 10,        # Alert if > 10 PII fields detected
-      payload_rejected: 5,     # Alert if > 5 payloads rejected
-      auth_failure: 3          # Alert if > 3 auth failures
+# Always enable in production
+config.security.auto_detect_pii = true
+```
+
+### 2. Use Environment Variables for Secrets
+
+```ruby
+# Never hardcode sensitive values
+config.delivery.headers = {
+  'X-API-Key' => ENV['EZLOGS_API_KEY']
+}
+```
+
+### 3. Regular Security Audits
+
+```ruby
+# Regular security checks
+def audit_security_configuration
+  config = EzlogsRubyAgent.config.security
+  
+  puts "PII Detection: #{config.auto_detect_pii}"
+  puts "Sensitive Fields: #{config.sensitive_fields}"
+  puts "Max Event Size: #{config.max_event_size}"
+  puts "Excluded Resources: #{config.excluded_resources}"
+end
+```
+
+### 4. Monitor for Security Issues
+
+```ruby
+# Alert on security concerns
+def monitor_security_events
+  security_stats = EzlogsRubyAgent.security_stats
+  
+  if security_stats[:pii_detections] > 100
+    alert_team("High PII detection rate detected")
+  end
+  
+  if security_stats[:oversized_events] > 10
+    alert_team("Multiple oversized events detected")
+  end
+end
+```
+
+## 📋 Compliance
+
+### GDPR Compliance
+
+EZLogs Ruby Agent helps with GDPR compliance:
+
+- **Data Minimization**: Only collect necessary data
+- **PII Protection**: Automatic detection and sanitization
+- **Data Retention**: Events are delivered immediately, not stored
+- **Right to be Forgotten**: No persistent storage in the agent
+
+### HIPAA Compliance
+
+For healthcare applications:
+
+```ruby
+EzlogsRubyAgent.configure do |config|
+  config.security do |security|
+    # HIPAA-specific patterns
+    security.custom_pii_patterns = {
+      'patient_id' => /\bPAT-\d{8}\b/,
+      'medical_record' => /\bMRN-\d{10}\b/,
+      'insurance_id' => /\bINS-\d{12}\b/
     }
     
-    # Alert handlers
-    security.alert_handlers = [
-      ->(event) { Rails.logger.warn("Security alert: #{event}") },
-      ->(event) { SlackNotifier.notify_security(event) }
+    # Exclude all healthcare-related models
+    config.excluded_resources = [
+      'Patient', 'MedicalRecord', 'Insurance', 'Diagnosis'
     ]
   end
 end
 ```
 
-## 🧪 Security Testing
+### PCI DSS Compliance
 
-### Security Test Helpers
-
-Test security features in your test suite:
+For payment processing:
 
 ```ruby
-# spec/support/ezlogs_security_helper.rb
-RSpec.configure do |config|
-  config.before(:each) do
-    # Enable security testing mode
-    EzlogsRubyAgent.security_test_mode do
-      # All security events are captured for testing
-    end
-  end
-  
-  config.after(:each) do
-    EzlogsRubyAgent.clear_security_events
+EzlogsRubyAgent.configure do |config|
+  config.security do |security|
+    # PCI-specific patterns
+    security.custom_pii_patterns = {
+      'card_number' => /\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/,
+      'cvv' => /\b\d{3,4}\b/,
+      'expiry' => /\b\d{2}\/\d{2,4}\b/
+    }
+    
+    # Exclude payment models
+    config.excluded_resources = [
+      'Payment', 'CreditCard', 'Transaction'
+    ]
   end
 end
 ```
 
-### Security Test Examples
+## 🔧 Security Configuration Examples
+
+### Complete Security Configuration
 
 ```ruby
-# spec/security/ezlogs_security_spec.rb
-RSpec.describe "EZLogs Security", type: :security do
-  it "sanitizes PII fields" do
-    EzlogsRubyAgent.log_event(
-      event_type: 'user',
-      action: 'created',
-      actor: 'system',
-      subject: 'user_123',
-      metadata: {
-        email: 'john@example.com',
-        password: 'secret123',
-        ssn: '123-45-6789'
-      }
-    )
-    
-    events = EzlogsRubyAgent.captured_events
-    event = events.last
-    
-    expect(event[:metadata][:email]).to eq('***@example.com')
-    expect(event[:metadata][:password]).to eq('*********')
-    expect(event[:metadata][:ssn]).to eq('***-**-6789')
+# config/initializers/ezlogs_ruby_agent.rb
+EzlogsRubyAgent.configure do |config|
+  # Security settings
+  config.security do |security|
+    security.auto_detect_pii = true
+    security.sensitive_fields = [
+      'password', 'token', 'api_key', 'secret', 'ssn',
+      'credit_card', 'private_key', 'session_data'
+    ]
+    security.max_event_size = 1024 * 1024  # 1MB
+    security.max_field_size = 1024  # 1KB
+    security.max_fields_per_event = 100
+    security.custom_pii_patterns = {
+      'employee_id' => /\bEMP-\d{6}\b/,
+      'customer_id' => /\bCUST-\d{8}\b/
+    }
+    security.log_sanitization_events = true
   end
   
-  it "rejects oversized payloads" do
-    large_metadata = { data: 'x' * (1024 * 1024 + 1) }  # > 1MB
-    
-    expect {
-      EzlogsRubyAgent.log_event(
-        event_type: 'test',
-        action: 'created',
-        actor: 'test',
-        subject: 'test',
-        metadata: large_metadata
-      )
-    }.to raise_error(EzlogsRubyAgent::SecurityError, /Payload too large/)
-  end
+  # Resource filtering
+  config.included_resources = ['order', 'user', 'payment']
+  config.excluded_resources = [
+    'temp', 'cache', 'session', 'password_reset',
+    'admin_log', 'sensitive_data'
+  ]
   
-  it "excludes sensitive fields" do
-    EzlogsRubyAgent.log_event(
-      event_type: 'user',
-      action: 'created',
-      actor: 'system',
-      subject: 'user_123',
-      metadata: {
-        id: 123,
-        name: 'John Doe',
-        password: 'secret123',
-        private_key: 'abc123'
-      }
-    )
-    
-    events = EzlogsRubyAgent.captured_events
-    event = events.last
-    
-    expect(event[:metadata]).to include('id', 'name')
-    expect(event[:metadata]).not_to include('password', 'private_key')
+  # Environment-specific overrides
+  if Rails.env.development?
+    config.security.auto_detect_pii = false
+    config.debug_mode = true
   end
 end
 ```
-
-## 🚨 Security Best Practices
-
-### Development
-
-1. **Enable security features early** in development
-2. **Test security configurations** thoroughly
-3. **Use security test mode** in test suites
-4. **Review security logs** regularly
-
-### Production
-
-1. **Always enable PII detection** in production
-2. **Use environment variables** for sensitive configuration
-3. **Monitor security metrics** continuously
-4. **Set up security alerts** for critical events
-5. **Regular security audits** of collected data
-
-### Configuration
-
-1. **Start with restrictive settings** and relax as needed
-2. **Use whitelist approach** when possible
-3. **Regularly review and update** security patterns
-4. **Document security decisions** and rationale
-
-### Data Handling
-
-1. **Minimize data collection** - only collect what you need
-2. **Sanitize data early** in the pipeline
-3. **Use appropriate retention** periods
-4. **Implement data deletion** capabilities
-
-## 📚 Compliance Checklists
-
-### GDPR Checklist
-
-- [ ] Enable automatic PII detection
-- [ ] Configure data retention periods
-- [ ] Implement data deletion capabilities
-- [ ] Provide data portability features
-- [ ] Document data processing activities
-- [ ] Establish data protection impact assessments
-
-### CCPA Checklist
-
-- [ ] Enable opt-out mechanisms
-- [ ] Provide data disclosure capabilities
-- [ ] Implement data deletion requests
-- [ ] Maintain data processing records
-- [ ] Train staff on privacy requirements
-
-### HIPAA Checklist
-
-- [ ] Enable PHI detection
-- [ ] Implement access controls
-- [ ] Enable audit logging
-- [ ] Configure encryption in transit
-- [ ] Establish breach notification procedures
 
 ## 📚 Next Steps
 
-- **[Configuration Guide](configuration.md)** - Complete configuration options
+- **[Getting Started](getting-started.md)** - Basic setup and usage
+- **[Configuration Guide](configuration.md)** - Advanced configuration options
 - **[Performance Guide](performance.md)** - Optimization and tuning
 - **[API Reference](../lib/ezlogs_ruby_agent.rb)** - Complete API documentation
-- **[Examples](../examples/)** - Complete example applications
 
 ---
 
-**Security is not optional - it's built into every aspect of EZLogs.** Use these guidelines to ensure your event tracking system protects sensitive data and maintains compliance! 🛡️ 
+**Your EZLogs Ruby Agent is now configured with enterprise-grade security!** 🔒 

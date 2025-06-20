@@ -28,66 +28,122 @@ module EzlogsRubyAgent
 
   # Enhanced configuration system with elegant DSL and validation
   class Configuration
-    # Legacy attributes for backward compatibility
-    attr_accessor(
-      :capture_http,        # Should HTTP requests be tracked?
-      :capture_callbacks,   # Should AR callbacks be tracked?
-      :capture_jobs,        # Should background jobs be tracked?
-      :resources_to_track,  # List of resource types to track
-      :exclude_resources,   # List of resource types to exclude
-      :actor_extractor,     # Optional custom actor extractor Proc
-      :agent_host,          # e.g. "127.0.0.1"
-      :agent_port,          # e.g. 9000
-      :flush_interval,      # in seconds, e.g. 1.0
-      :max_buffer_size,     # e.g. 5_000
-      :service_name,        # Name of the service/app
-      :environment,         # Environment (production, development, etc.)
-      :job_adapter          # Adapter for background jobs (sidekiq or active_job)
-    )
-
-    # Nested configuration objects
-    attr_reader :collect, :security, :performance, :delivery, :correlation
+    attr_accessor :service_name, :environment, :instrumentation, :security, :job_adapter, :included_resources,
+                  :excluded_resources, :performance, :delivery, :correlation
 
     def initialize
-      # Legacy defaults
-      @capture_http        = true
-      @capture_callbacks   = true
-      @capture_jobs        = true
-      @resources_to_track  = []
-      @exclude_resources   = []
-      @actor_extractor     = nil
-      @agent_host         = '127.0.0.1'
-      @agent_port         = 9000
-      @flush_interval     = 1.0
-      @max_buffer_size    = 5_000
-      @service_name       = nil
-      @environment        = nil
-      @job_adapter        = nil
+      # Core settings with smart defaults
+      @service_name = detect_service_name
+      @environment = detect_environment
 
-      # Initialize nested configuration objects
-      @collect = CollectConfiguration.new
-      @security = SecurityConfiguration.new
-      @performance = PerformanceConfiguration.new
-      @delivery = DeliveryConfiguration.new
-      @correlation = CorrelationConfiguration.new
+      # Instrumentation settings - all enabled by default for zero-config
+      @instrumentation = OpenStruct.new(
+        http: true,
+        active_record: true,
+        active_job: true,
+        sidekiq: true,
+        custom: true
+      )
+
+      # Security settings with comprehensive defaults
+      @security = OpenStruct.new(
+        auto_detect_pii: true,
+        sensitive_fields: %w[password token api_key secret key authorization bearer],
+        custom_pii_patterns: {},
+        max_event_size: 1024 * 1024, # 1MB
+        redacted_headers: %w[authorization x-api-key x-auth-token],
+        redacted_cookies: %w[session _csrf_token]
+      )
+
+      # Performance settings optimized for production
+      @performance = OpenStruct.new(
+        sample_rate: 1.0,
+        event_buffer_size: 1000,
+        max_delivery_connections: 10,
+        enable_compression: true,
+        enable_async: true
+      )
+
+      # Delivery settings with sensible defaults
+      @delivery = OpenStruct.new(
+        endpoint: nil,
+        timeout: 30,
+        retry_attempts: 3,
+        retry_backoff: 1.0,
+        batch_size: 100,
+        flush_interval: 5.0,
+        headers: {},
+        circuit_breaker_threshold: 5,
+        circuit_breaker_timeout: 60
+      )
+
+      # Correlation settings for flow tracking
+      @correlation = OpenStruct.new(
+        enable_correlation: true,
+        max_correlation_depth: 10,
+        thread_safe: true,
+        auto_generate_correlation_ids: true
+      )
+
+      # Resource tracking
+      @included_resources = []
+      @excluded_resources = []
+
+      # Job adapter detection
+      @job_adapter = detect_job_adapter
 
       @frozen = false
     end
 
-    # DSL method for collect configuration
-    def collect(&block)
-      return @collect unless block_given?
+    # Smart service name detection
+    def detect_service_name
+      return ENV['EZLOGS_SERVICE_NAME'] if ENV['EZLOGS_SERVICE_NAME']
+      return Rails.application.class.module_parent_name.underscore if defined?(Rails)
+      return File.basename(Dir.pwd) if Dir.pwd != '/'
 
+      'unknown-service'
+    end
+
+    # Smart environment detection
+    def detect_environment
+      return ENV['EZLOGS_ENVIRONMENT'] if ENV['EZLOGS_ENVIRONMENT']
+      return Rails.env if defined?(Rails) && Rails.respond_to?(:env)
+      return ENV['RAILS_ENV'] if ENV['RAILS_ENV']
+      return ENV['RACK_ENV'] if ENV['RACK_ENV']
+
+      'development'
+    end
+
+    # Smart job adapter detection
+    def detect_job_adapter
+      return :sidekiq if defined?(Sidekiq)
+      return :active_job if defined?(ActiveJob)
+
+      :active_job # fallback
+    end
+
+    # Backward compatibility methods (deprecated)
+    def collect(&block)
+      warn '[EZLogs] config.collect is deprecated. Use config.instrumentation instead.'
+      return @instrumentation unless block_given?
       raise ConfigurationError, "Configuration is frozen" if @frozen
 
-      @collect.instance_eval(&block)
-      @collect
+      @instrumentation.instance_eval(&block)
+      @instrumentation
+    end
+
+    # DSL method for instrumentation configuration
+    def instrumentation(&block)
+      return @instrumentation unless block_given?
+      raise ConfigurationError, "Configuration is frozen" if @frozen
+
+      @instrumentation.instance_eval(&block)
+      @instrumentation
     end
 
     # DSL method for security configuration
     def security(&block)
       return @security unless block_given?
-
       raise ConfigurationError, "Configuration is frozen" if @frozen
 
       @security.instance_eval(&block)
@@ -97,7 +153,6 @@ module EzlogsRubyAgent
     # DSL method for performance configuration
     def performance(&block)
       return @performance unless block_given?
-
       raise ConfigurationError, "Configuration is frozen" if @frozen
 
       @performance.instance_eval(&block)
@@ -107,7 +162,6 @@ module EzlogsRubyAgent
     # DSL method for delivery configuration
     def delivery(&block)
       return @delivery unless block_given?
-
       raise ConfigurationError, "Configuration is frozen" if @frozen
 
       @delivery.instance_eval(&block)
@@ -117,17 +171,23 @@ module EzlogsRubyAgent
     # DSL method for correlation configuration
     def correlation(&block)
       return @correlation unless block_given?
-
       raise ConfigurationError, "Configuration is frozen" if @frozen
 
       @correlation.instance_eval(&block)
       @correlation
     end
 
+    # Convenience method for quick setup
+    def quick_setup(service_name: nil, environment: nil)
+      @service_name = service_name if service_name
+      @environment = environment if environment
+      self
+    end
+
     # Freeze configuration to prevent further modifications
     def freeze!
       @frozen = true
-      @collect.freeze!
+      @instrumentation.freeze!
       @security.freeze!
       @performance.freeze!
       @delivery.freeze!
@@ -140,29 +200,45 @@ module EzlogsRubyAgent
       @service_name = ENV['EZLOGS_SERVICE_NAME'] if ENV['EZLOGS_SERVICE_NAME']
       @environment = ENV['EZLOGS_ENVIRONMENT'] if ENV['EZLOGS_ENVIRONMENT']
 
+      # Performance settings
       @performance.sample_rate = ENV['EZLOGS_SAMPLE_RATE'].to_f if ENV['EZLOGS_SAMPLE_RATE']
-      @performance.buffer_size = ENV['EZLOGS_BUFFER_SIZE'].to_i if ENV['EZLOGS_BUFFER_SIZE']
+      @performance.event_buffer_size = ENV['EZLOGS_EVENT_BUFFER_SIZE'].to_i if ENV['EZLOGS_EVENT_BUFFER_SIZE']
+      if ENV['EZLOGS_MAX_DELIVERY_CONNECTIONS']
+        @performance.max_delivery_connections = ENV['EZLOGS_MAX_DELIVERY_CONNECTIONS'].to_i
+      end
 
+      # Delivery settings
       @delivery.endpoint = ENV['EZLOGS_ENDPOINT'] if ENV['EZLOGS_ENDPOINT']
       @delivery.timeout = ENV['EZLOGS_TIMEOUT'].to_i if ENV['EZLOGS_TIMEOUT']
+      @delivery.flush_interval = ENV['EZLOGS_FLUSH_INTERVAL'].to_f if ENV['EZLOGS_FLUSH_INTERVAL']
+      @delivery.headers = JSON.parse(ENV['EZLOGS_DELIVERY_HEADERS']) if ENV['EZLOGS_DELIVERY_HEADERS']
+      if ENV['EZLOGS_CIRCUIT_BREAKER_THRESHOLD']
+        @delivery.circuit_breaker_threshold = ENV['EZLOGS_CIRCUIT_BREAKER_THRESHOLD'].to_i
+      end
+      if ENV['EZLOGS_CIRCUIT_BREAKER_TIMEOUT']
+        @delivery.circuit_breaker_timeout = ENV['EZLOGS_CIRCUIT_BREAKER_TIMEOUT'].to_i
+      end
 
+      # Security settings
       @security.auto_detect_pii = ENV['EZLOGS_AUTO_DETECT_PII'] != 'false'
+      @security.max_event_size = ENV['EZLOGS_MAX_EVENT_SIZE'].to_i if ENV['EZLOGS_MAX_EVENT_SIZE']
+
+      # Instrumentation settings
+      @instrumentation.http = ENV['EZLOGS_HTTP'] != 'false'
+      @instrumentation.active_record = ENV['EZLOGS_ACTIVE_RECORD'] != 'false'
+      @instrumentation.active_job = ENV['EZLOGS_ACTIVE_JOB'] != 'false'
+      @instrumentation.sidekiq = ENV['EZLOGS_SIDEKIQ'] != 'false'
     end
 
     # Validate complete configuration
     def validate!
       validation = ConfigurationValidation.new
-
-      # Validate basic settings
       validate_basic_settings(validation)
-
-      # Validate nested configurations
-      @collect.validate!(validation)
-      @security.validate!(validation)
-      @performance.validate!(validation)
-      @delivery.validate!(validation)
-      @correlation.validate!(validation)
-
+      validate_instrumentation_settings(validation)
+      validate_security_settings(validation)
+      validate_performance_settings(validation)
+      validate_delivery_settings(validation)
+      validate_correlation_settings(validation)
       unless validation.valid?
         raise ConfigurationError, "Configuration validation failed: #{validation.errors.join(', ')}"
       end
@@ -173,16 +249,45 @@ module EzlogsRubyAgent
     # Generate human-readable configuration summary
     def summary
       lines = []
+      lines << "=== EZLogs Configuration Summary ==="
       lines << "Service: #{@service_name || 'not set'}"
       lines << "Environment: #{@environment || 'not set'}"
-      lines << "HTTP Requests: #{@collect.http_requests ? 'enabled' : 'disabled'}"
-      lines << "Database Changes: #{@collect.database_changes ? 'enabled' : 'disabled'}"
-      lines << "Background Jobs: #{@collect.background_jobs ? 'enabled' : 'disabled'}"
-      lines << "Sample Rate: #{(@performance.sample_rate * 100).to_i}%"
-      lines << "Buffer Size: #{@performance.buffer_size}"
-      lines << "Delivery Endpoint: #{@delivery.endpoint || 'not set'}"
-      lines << "Security: #{@security.auto_detect_pii ? 'PII detection enabled' : 'PII detection disabled'}"
-
+      lines << ""
+      lines << "Instrumentation Settings:"
+      lines << "  HTTP: #{@instrumentation.http ? '✓ enabled' : '✗ disabled'}"
+      lines << "  ActiveRecord: #{@instrumentation.active_record ? '✓ enabled' : '✗ disabled'}"
+      lines << "  ActiveJob: #{@instrumentation.active_job ? '✓ enabled' : '✗ disabled'}"
+      lines << "  Sidekiq: #{@instrumentation.sidekiq ? '✓ enabled' : '✗ disabled'}"
+      lines << "  Custom: #{@instrumentation.custom ? '✓ enabled' : '✗ disabled'}"
+      lines << ""
+      lines << "Performance Settings:"
+      lines << "  Sample Rate: #{(@performance.sample_rate * 100).to_i}%"
+      lines << "  Event Buffer Size: #{@performance.event_buffer_size}"
+      lines << "  Max Delivery Connections: #{@performance.max_delivery_connections}"
+      lines << "  Async: #{@performance.enable_async ? '✓ enabled' : '✗ disabled'}"
+      lines << "  Compression: #{@performance.enable_compression ? '✓ enabled' : '✗ disabled'}"
+      lines << ""
+      lines << "Security Settings:"
+      lines << "  PII Detection: #{@security.auto_detect_pii ? '✓ enabled' : '✗ disabled'}"
+      lines << "  Sensitive Fields: #{@security.sensitive_fields.join(', ')}"
+      lines << "  Max Event Size: #{@security.max_event_size} bytes"
+      lines << ""
+      lines << "Delivery Settings:"
+      lines << "  Endpoint: #{@delivery.endpoint || 'not configured'}"
+      lines << "  Timeout: #{@delivery.timeout}s"
+      lines << "  Flush Interval: #{@delivery.flush_interval}s"
+      lines << "  Batch Size: #{@delivery.batch_size}"
+      lines << "  Circuit Breaker Threshold: #{@delivery.circuit_breaker_threshold}"
+      lines << "  Circuit Breaker Timeout: #{@delivery.circuit_breaker_timeout}s"
+      lines << ""
+      lines << "Correlation Settings:"
+      lines << "  Correlation Enabled: #{@correlation.enable_correlation ? '✓ enabled' : '✗ disabled'}"
+      lines << "  Max Correlation Depth: #{@correlation.max_correlation_depth}"
+      lines << "  Thread Safe: #{@correlation.thread_safe ? '✓ enabled' : '✗ disabled'}"
+      lines << "  Auto Generate IDs: #{@correlation.auto_generate_correlation_ids ? '✓ enabled' : '✗ disabled'}"
+      lines << ""
+      lines << "Included Resources: #{@included_resources.inspect}"
+      lines << "Excluded Resources: #{@excluded_resources.inspect}"
       lines.join("\n")
     end
 
@@ -191,6 +296,43 @@ module EzlogsRubyAgent
     def validate_basic_settings(validation)
       validation.add_error("Service name is required") if @service_name.nil? || @service_name.empty?
       validation.add_error("Environment is required") if @environment.nil? || @environment.empty?
+    end
+
+    def validate_instrumentation_settings(validation)
+      # All instrumentation settings are optional and have sensible defaults
+    end
+
+    def validate_security_settings(validation)
+      validation.add_error("max_event_size must be positive") if @security.max_event_size <= 0
+      validation.add_error("max_event_size cannot exceed 10MB") if @security.max_event_size > 10 * 1024 * 1024
+    end
+
+    def validate_performance_settings(validation)
+      if @performance.sample_rate < 0.0 || @performance.sample_rate > 1.0
+        validation.add_error("sample_rate must be between 0.0 and 1.0")
+      end
+      validation.add_error("event_buffer_size must be positive") if @performance.event_buffer_size <= 0
+      validation.add_error("max_delivery_connections must be positive") if @performance.max_delivery_connections <= 0
+    end
+
+    def validate_delivery_settings(validation)
+      if @delivery.endpoint
+        begin
+          uri = URI.parse(@delivery.endpoint)
+          validation.add_error("endpoint must be a valid URL") unless %w[http https].include?(uri.scheme)
+        rescue URI::InvalidURIError
+          validation.add_error("endpoint must be a valid URL")
+        end
+      end
+      validation.add_error("timeout must be positive") if @delivery.timeout <= 0
+      validation.add_error("timeout cannot exceed 60 seconds") if @delivery.timeout > 60
+      validation.add_error("flush_interval must be positive") if @delivery.flush_interval <= 0
+      validation.add_error("batch_size must be positive") if @delivery.batch_size <= 0
+    end
+
+    def validate_correlation_settings(validation)
+      validation.add_error("max_correlation_depth must be positive") if @correlation.max_correlation_depth <= 0
+      validation.add_error("max_correlation_depth cannot exceed 50") if @correlation.max_correlation_depth > 50
     end
   end
 
@@ -218,13 +360,13 @@ module EzlogsRubyAgent
 
   # Security configuration for PII protection and sanitization
   class SecurityConfiguration
-    attr_accessor :auto_detect_pii, :sanitize_fields, :max_payload_size, :custom_patterns
+    attr_accessor :auto_detect_pii, :sensitive_fields, :max_event_size, :custom_pii_patterns
 
     def initialize
       @auto_detect_pii = true
-      @sanitize_fields = []
-      @max_payload_size = 64 * 1024 # 64KB
-      @custom_patterns = {}
+      @sensitive_fields = []
+      @max_event_size = 64 * 1024 # 64KB
+      @custom_pii_patterns = {}
       @frozen = false
     end
 
@@ -234,41 +376,23 @@ module EzlogsRubyAgent
     end
 
     def validate!(validation)
-      validation.add_error("max_payload_size must be positive") if @max_payload_size <= 0
-      validation.add_error("max_payload_size cannot exceed 1MB") if @max_payload_size > 1024 * 1024
+      validation.add_error("max_event_size must be positive") if @max_event_size <= 0
+      validation.add_error("max_event_size cannot exceed 1MB") if @max_event_size > 1024 * 1024
     end
   end
 
   # Performance configuration for optimization settings
   class PerformanceConfiguration
-    attr_accessor :sample_rate, :buffer_size, :flush_interval, :max_buffer_size,
-                  :batch_size, :max_batch_size, :compression_threshold,
-                  :compression_enabled, :object_pool_size, :max_object_pool_size,
-                  :connection_pool_size, :connection_timeout
+    attr_accessor :sample_rate, :event_buffer_size, :max_delivery_connections,
+                  :enable_compression, :enable_async
 
     def initialize
       @sample_rate = 1.0
-      @buffer_size = 1000
-      @flush_interval = 1.0
-      @max_buffer_size = 10_000
-      @batch_size = 100
-      @max_batch_size = 1000
-      @compression_threshold = 1024 # bytes
-      @compression_enabled = true
-      @object_pool_size = 100
-      @max_object_pool_size = 1000
-      @connection_pool_size = 10
-      @connection_timeout = 30
+      @event_buffer_size = 1000
+      @max_delivery_connections = 10
+      @enable_compression = true
+      @enable_async = true
       @frozen = false
-    end
-
-    # Backward compatibility alias
-    def max_concurrent_connections
-      @connection_pool_size
-    end
-
-    def max_concurrent_connections=(value)
-      @connection_pool_size = value
     end
 
     def freeze!
@@ -278,17 +402,8 @@ module EzlogsRubyAgent
 
     def validate!(validation)
       validation.add_error("sample_rate must be between 0.0 and 1.0") if @sample_rate < 0.0 || @sample_rate > 1.0
-      validation.add_error("buffer_size must be positive") if @buffer_size <= 0
-      validation.add_error("buffer_size cannot exceed 100,000") if @buffer_size > 100_000
-      validation.add_error("flush_interval must be positive") if @flush_interval <= 0
-      validation.add_error("max_buffer_size must be positive") if @max_buffer_size <= 0
-      validation.add_error("max_buffer_size cannot exceed 100,000") if @max_buffer_size > 100_000
-      validation.add_error("batch_size must be positive") if @batch_size <= 0
-      validation.add_error("max_batch_size must be positive") if @max_batch_size <= 0
-      validation.add_error("object_pool_size must be positive") if @object_pool_size <= 0
-      validation.add_error("max_object_pool_size must be positive") if @max_object_pool_size <= 0
-      validation.add_error("connection_pool_size must be positive") if @connection_pool_size <= 0
-      validation.add_error("connection_timeout must be positive") if @connection_timeout <= 0
+      validation.add_error("event_buffer_size must be positive") if @event_buffer_size <= 0
+      validation.add_error("max_delivery_connections must be positive") if @max_delivery_connections <= 0
     end
   end
 
@@ -317,7 +432,7 @@ module EzlogsRubyAgent
       if @endpoint
         begin
           uri = URI.parse(@endpoint)
-          validation.add_error("endpoint must use HTTP or HTTPS") unless %w[http https].include?(uri.scheme)
+          validation.add_error("endpoint must be a valid URL") unless %w[http https].include?(uri.scheme)
         rescue URI::InvalidURIError
           validation.add_error("endpoint must be a valid URL")
         end
@@ -347,15 +462,15 @@ module EzlogsRubyAgent
 
   # Correlation configuration for flow tracking
   class CorrelationConfiguration
-    attr_accessor :enable_flow_tracking, :session_tracking, :user_tracking,
-                  :business_process_tracking, :max_flow_depth, :flow_timeout
+    attr_accessor :enable_correlation, :session_tracking, :user_tracking,
+                  :business_process_tracking, :max_correlation_depth, :flow_timeout
 
     def initialize
-      @enable_flow_tracking = true
+      @enable_correlation = true
       @session_tracking = true
       @user_tracking = true
       @business_process_tracking = true
-      @max_flow_depth = 10
+      @max_correlation_depth = 10
       @flow_timeout = 3600 # 1 hour in seconds
       @frozen = false
     end
@@ -366,10 +481,10 @@ module EzlogsRubyAgent
     end
 
     def validate!(validation)
-      if @max_flow_depth <= 0
-        validation.add_error("max_flow_depth must be positive")
-      elsif @max_flow_depth > 100
-        validation.add_error("max_flow_depth cannot exceed 100")
+      if @max_correlation_depth <= 0
+        validation.add_error("max_correlation_depth must be positive")
+      elsif @max_correlation_depth > 100
+        validation.add_error("max_correlation_depth cannot exceed 100")
       end
 
       if @flow_timeout <= 0

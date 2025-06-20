@@ -20,27 +20,26 @@ module EzlogsRubyAgent
       # Start correlation context for this request
       request_id = extract_request_id(env)
       session_id = extract_session_id(env)
-      correlation_context = CorrelationManager.start_request_context(
-        request_id,
-        session_id,
-        extract_request_metadata(env)
-      )
+      correlation_context = EzlogsRubyAgent::CorrelationManager.start_request_context(request_id, session_id)
 
+      # Call the app
       status, headers, response = @app.call(env)
       end_time = Time.now
 
-      # Track the HTTP request event
+      # Track the HTTP request
       track_http_request(env, status, headers, response, start_time, end_time, correlation_context)
 
       [status, headers, response]
-    ensure
-      # Clean up correlation context
-      CorrelationManager.clear_context
+    rescue StandardError => e
+      end_time = Time.now
+      track_http_request(env, 500, { 'Content-Type' => 'application/json' }, e, start_time, end_time,
+                         correlation_context)
+      raise
     end
 
     private
 
-    def track_http_request(env, status, headers, response, start_time, end_time, _correlation_context)
+    def track_http_request(env, status, headers, response, start_time, end_time, correlation_context)
       return unless trackable_request?(env)
 
       begin
@@ -51,7 +50,8 @@ module EzlogsRubyAgent
           actor: extract_actor(env),
           subject: extract_subject(env),
           metadata: extract_request_metadata(env, status, headers, response, start_time, end_time),
-          timestamp: start_time
+          timestamp: start_time,
+          correlation_id: correlation_context&.correlation_id
         )
 
         # Log the event
@@ -225,13 +225,86 @@ module EzlogsRubyAgent
     end
 
     def sanitize_params(params)
-      params.transform_values do |value|
-        if value.is_a?(Hash)
-          sanitize_params(value)
+      return {} unless params.is_a?(Hash)
+
+      # Apply the same sanitization logic as EventProcessor
+      sanitized_fields = []
+
+      # Get sensitive field patterns from configuration
+      config = EzlogsRubyAgent.config
+      all_sensitive_fields = %w[password passwd pwd secret token api_key access_key credit_card cc_number card_number
+                                ssn social_security auth_token session_id cookie] +
+                             (config.sanitize_fields || [])
+
+      # Apply field-based sanitization
+      sanitize_hash_recursive!(params, all_sensitive_fields, sanitized_fields)
+
+      # Apply pattern-based PII detection if enabled
+      detect_pii_recursive!(params, sanitized_fields) if config.auto_detect_pii
+
+      params
+    end
+
+    def sanitize_hash_recursive!(hash, sensitive_fields, sanitized_fields, path = '')
+      hash.each do |key, value|
+        current_path = path.empty? ? key.to_s : "#{path}.#{key}"
+
+        if sensitive_fields.any? { |field| key.to_s.downcase.include?(field.downcase) }
+          hash[key] = '[REDACTED]'
+          sanitized_fields << current_path
+        elsif value.is_a?(Hash)
+          sanitize_hash_recursive!(value, sensitive_fields, sanitized_fields, current_path)
         elsif value.is_a?(Array)
-          value.map { |v| v.is_a?(Hash) ? sanitize_params(v) : v }
-        else
-          value
+          value.each_with_index do |item, index|
+            if item.is_a?(Hash)
+              sanitize_hash_recursive!(item, sensitive_fields, sanitized_fields, "#{current_path}[#{index}]")
+            end
+          end
+        end
+      end
+    end
+
+    def detect_pii_recursive!(hash, sanitized_fields, path = '')
+      # Default PII patterns
+      pii_patterns = {
+        'credit_card' => /\b(?:\d{4}[-\s]?){3}\d{4}\b/,
+        'ssn' => /\b\d{3}-?\d{2}-?\d{4}\b/,
+        'phone' => /\b\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})\b/,
+        'email_loose' => /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/
+      }
+
+      # Add custom patterns from config
+      config = EzlogsRubyAgent.config
+      pii_patterns.merge!(config.custom_patterns || {})
+
+      hash.each do |key, value|
+        current_path = path.empty? ? key.to_s : "#{path}.#{key}"
+
+        case value
+        when String
+          pii_patterns.each_value do |pattern|
+            next unless value.match?(pattern)
+
+            hash[key] = '[REDACTED]'
+            sanitized_fields << current_path
+            break
+          end
+        when Hash
+          detect_pii_recursive!(value, sanitized_fields, current_path)
+        when Array
+          value.each_with_index do |item, index|
+            if item.is_a?(Hash)
+              detect_pii_recursive!(item, sanitized_fields, "#{current_path}[#{index}]")
+            elsif item.is_a?(String)
+              pii_patterns.each_value do |pattern|
+                next unless item.match?(pattern)
+
+                value[index] = '[REDACTED]'
+                sanitized_fields << "#{current_path}[#{index}]"
+                break
+              end
+            end
+          end
         end
       end
     end
@@ -247,14 +320,14 @@ module EzlogsRubyAgent
       config = EzlogsRubyAgent.config
 
       # Check if path matches any excluded patterns
-      excluded = config.exclude_resources.any? do |pattern|
+      excluded = config.excluded_resources.any? do |pattern|
         path.match?(pattern)
       end
       return false if excluded
 
       # Check if path matches any included patterns
-      if config.resources_to_track.any?
-        included = config.resources_to_track.any? do |pattern|
+      if config.included_resources.any?
+        included = config.included_resources.any? do |pattern|
           path.match?(pattern)
         end
         return false unless included

@@ -37,8 +37,8 @@ RSpec.describe EzlogsRubyAgent::CallbacksTracker do
     EzlogsRubyAgent.configure do |config|
       config.service_name = 'test-app'
       config.environment = 'test'
-      config.resources_to_track = []
-      config.exclude_resources = []
+      config.included_resources = []
+      config.excluded_resources = []
     end
 
     # Mock the writer to capture events synchronously

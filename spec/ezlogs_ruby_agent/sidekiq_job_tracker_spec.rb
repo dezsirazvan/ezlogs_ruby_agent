@@ -13,8 +13,8 @@ RSpec.describe EzlogsRubyAgent::SidekiqJobTracker do
     EzlogsRubyAgent.configure do |config|
       config.service_name = 'test-app'
       config.environment = 'test'
-      config.resources_to_track = []
-      config.exclude_resources = []
+      config.included_resources = []
+      config.excluded_resources = []
     end
     allow(EzlogsRubyAgent.writer).to receive(:log)
     allow(EzlogsRubyAgent::CorrelationManager).to receive(:current_context).and_return(context)

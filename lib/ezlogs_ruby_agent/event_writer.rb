@@ -6,14 +6,14 @@ module EzlogsRubyAgent
   class EventWriter
     def initialize
       config = EzlogsRubyAgent.config
-      @flush_interval = config.flush_interval
-      @max_buffer = config.max_buffer_size
+      @flush_interval = config.delivery.flush_interval
+      @max_buffer = config.performance.event_buffer_size
       @queue = SizedQueue.new(@max_buffer)
       @delivery_engine = EzlogsRubyAgent.delivery_engine
       @event_processor = EzlogsRubyAgent.processor
       @batch_processor = BatchProcessor.new(
-        batch_size: config.performance.batch_size,
-        max_batch_size: config.performance.max_batch_size,
+        batch_size: config.delivery.batch_size,
+        max_batch_size: config.delivery.batch_size,
         compression_threshold: config.performance.compression_threshold
       )
       @metrics = {
@@ -90,6 +90,7 @@ module EzlogsRubyAgent
         @queue << processed_event
         record_metric(:events_received, 1)
         if EzlogsRubyAgent.debug_mode && processed_event.is_a?(Hash) && processed_event[:event_type] && processed_event[:action]
+          # Capture the processed event (with sanitization applied) for debugging
           DebugTools.capture_event(OpenStruct.new(to_h: processed_event))
         end
       else
@@ -189,6 +190,8 @@ module EzlogsRubyAgent
     end
 
     def flush_on_exit
+      return unless @queue && !@queue.empty?
+
       until @queue.empty?
         batch = drain_batch
         send_batch(batch) unless batch.empty?

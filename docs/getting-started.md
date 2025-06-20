@@ -22,18 +22,19 @@ Create the initializer file:
 
 ```ruby
 # config/initializers/ezlogs_ruby_agent.rb
-EzlogsRubyAgent.configure do |c|
-  c.service_name = 'my-awesome-app'
-  c.environment = Rails.env
+EzlogsRubyAgent.configure do |config|
+  config.service_name = 'my-awesome-app'
+  config.environment = Rails.env
 end
 ```
 
 That's it! EZLogs will automatically start tracking:
-- HTTP requests (all API calls and page views)
-- Database changes (ActiveRecord create/update/destroy)
-- Background jobs (ActiveJob and Sidekiq)
+- ✅ HTTP requests (all API calls and page views)
+- ✅ Database changes (ActiveRecord create/update/destroy)
+- ✅ Background jobs (ActiveJob and Sidekiq)
+- ✅ Custom events (when you add them)
 
-## 🎯 Automatic Event Tracking
+## 🎯 What Gets Tracked Automatically
 
 After restarting your Rails application, **events are automatically captured** - no additional code needed!
 
@@ -42,18 +43,18 @@ Every web request generates an event automatically:
 
 ```json
 {
-  "event_type": "http_request",
-  "action": "GET",
-  "actor": "user_123",
-  "subject": "/api/orders",
+  "event_type": "http.request",
+  "action": "POST /orders",
+  "actor": { "type": "user", "id": "user_123" },
+  "subject": { "type": "endpoint", "id": "/orders" },
   "timestamp": "2024-01-15T10:30:00Z",
   "metadata": {
-    "path": "/api/orders",
-    "method": "GET",
-    "status": 200,
+    "method": "POST",
+    "path": "/orders",
+    "status_code": 201,
     "duration_ms": 45,
     "user_agent": "Mozilla/5.0...",
-    "ip_address": "192.168.1.100"
+    "content_type": "application/json"
   }
 }
 ```
@@ -63,14 +64,16 @@ ActiveRecord operations are automatically tracked:
 
 ```json
 {
-  "event_type": "database_change",
-  "action": "created",
-  "actor": "user_123",
-  "subject": "Order_456",
+  "event_type": "data.change",
+  "action": "order.create",
+  "actor": { "type": "system", "id": "system" },
+  "subject": { "type": "order", "id": "order_456" },
   "timestamp": "2024-01-15T10:30:00Z",
   "metadata": {
+    "model": "Order",
     "table": "orders",
-    "record_id": 456,
+    "record_id": "456",
+    "action": "create",
     "changes": {
       "total": [null, 99.99],
       "status": [null, "pending"]
@@ -84,19 +87,33 @@ Job execution is tracked automatically:
 
 ```json
 {
-  "event_type": "background_job",
-  "action": "completed",
-  "actor": "system",
-  "subject": "ProcessOrderJob_789",
+  "event_type": "job.execution",
+  "action": "ProcessOrderJob.completed",
+  "actor": { "type": "system", "id": "system" },
+  "subject": { "type": "job", "id": "ProcessOrderJob" },
   "timestamp": "2024-01-15T10:30:00Z",
   "metadata": {
-    "job_class": "ProcessOrderJob",
-    "job_id": "789",
-    "duration_ms": 1250,
-    "queue": "default"
+    "job_name": "ProcessOrderJob",
+    "job_id": "job_789",
+    "status": "completed",
+    "duration": 1.25,
+    "queue": "default",
+    "result": { "success": true }
   }
 }
 ```
+
+## 🔗 Perfect Correlation
+
+All events in a single request share the same correlation ID:
+
+```
+HTTP Request → Database Change → Background Job → Sidekiq Job
+     ↓              ↓                ↓              ↓
+corr_abc123    corr_abc123      corr_abc123    corr_abc123
+```
+
+This means you can trace the complete journey of any request through your entire application!
 
 ## 🎯 Custom Business Events (Optional)
 
@@ -114,10 +131,10 @@ class OrdersController < ApplicationController
     
     # Track custom business event (optional)
     EzlogsRubyAgent.log_event(
-      event_type: 'order',
+      event_type: 'order.action',
       action: 'created',
-      actor: current_user.id,
-      subject: order.id,
+      actor: { type: 'user', id: current_user.id },
+      subject: { type: 'order', id: order.id },
       metadata: {
         total: order.total,
         items_count: order.items.count,
@@ -141,10 +158,10 @@ class Order < ApplicationRecord
   def track_order_creation
     # Track custom business event (optional)
     EzlogsRubyAgent.log_event(
-      event_type: 'order',
+      event_type: 'order.action',
       action: 'created',
-      actor: user_id,
-      subject: id,
+      actor: { type: 'user', id: user_id },
+      subject: { type: 'order', id: id },
       metadata: {
         total: total,
         status: status,
@@ -164,10 +181,10 @@ class ProcessOrderJob < ApplicationJob
     
     # Track custom job events (optional)
     EzlogsRubyAgent.log_event(
-      event_type: 'order_processing',
+      event_type: 'order.processing',
       action: 'started',
-      actor: 'system',
-      subject: order_id,
+      actor: { type: 'system', id: 'system' },
+      subject: { type: 'order', id: order_id },
       metadata: { queue: queue_name }
     )
     
@@ -176,10 +193,10 @@ class ProcessOrderJob < ApplicationJob
     
     # Track custom completion event (optional)
     EzlogsRubyAgent.log_event(
-      event_type: 'order_processing',
+      event_type: 'order.processing',
       action: 'completed',
-      actor: 'system',
-      subject: order_id,
+      actor: { type: 'system', id: 'system' },
+      subject: { type: 'order', id: order_id },
       metadata: { 
         processing_time_ms: Time.current.to_f - started_at,
         final_status: order.status
@@ -197,121 +214,62 @@ Track complex workflows that span multiple operations:
 class OrderFulfillmentService
   def fulfill_order(order_id)
     # Start a business flow
-    EzlogsRubyAgent.start_flow('order_fulfillment', order_id, {
-      customer_id: order.customer_id,
-      priority: order.priority
+    flow_id = EzlogsRubyAgent.start_flow('order_fulfillment', order_id, {
+      priority: 'high',
+      customer_type: 'premium'
     })
     
-    begin
-      # Reserve inventory
-      inventory_result = reserve_inventory(order)
-      EzlogsRubyAgent.log_event(
-        event_type: 'inventory',
-        action: 'reserved',
-        subject: order_id,
-        metadata: { items_reserved: inventory_result.items_count }
-      )
-      
-      # Process payment
-      payment_result = process_payment(order)
-      EzlogsRubyAgent.log_event(
-        event_type: 'payment',
-        action: 'processed',
-        subject: order_id,
-        metadata: { amount: payment_result.amount }
-      )
-      
-      # Create shipping label
-      shipping_result = create_shipping_label(order)
-      EzlogsRubyAgent.log_event(
-        event_type: 'shipping',
-        action: 'label_created',
-        subject: order_id,
-        metadata: { tracking_number: shipping_result.tracking_number }
-      )
-      
-    rescue => e
-      # Track failures
-      EzlogsRubyAgent.log_event(
-        event_type: 'order_fulfillment',
-        action: 'failed',
-        subject: order_id,
-        metadata: { error: e.message, step: current_step }
-      )
-      raise
-    end
+    # All events in this flow will share the same flow_id
+    order = Order.find(order_id)
+    
+    # Process payment
+    payment_result = process_payment(order)
+    EzlogsRubyAgent.log_event(
+      event_type: 'payment.processed',
+      action: 'payment.success',
+      actor: { type: 'system', id: 'payment_processor' },
+      subject: { type: 'order', id: order_id },
+      metadata: { amount: order.total, method: 'credit_card' }
+    )
+    
+    # Update inventory
+    update_inventory(order)
+    EzlogsRubyAgent.log_event(
+      event_type: 'inventory.updated',
+      action: 'inventory.reserved',
+      actor: { type: 'system', id: 'inventory_system' },
+      subject: { type: 'order', id: order_id },
+      metadata: { items_reserved: order.items.count }
+    )
+    
+    # Send confirmation
+    send_confirmation_email(order)
+    EzlogsRubyAgent.log_event(
+      event_type: 'notification.sent',
+      action: 'email.order_confirmation',
+      actor: { type: 'system', id: 'notification_service' },
+      subject: { type: 'order', id: order_id },
+      metadata: { type: 'email', template: 'order_confirmation' }
+    )
+    
+    # Complete the flow
+    EzlogsRubyAgent.complete_flow(flow_id, { success: true })
   end
 end
 ```
 
-## ⚡ Performance Monitoring
-
-### Timing Critical Operations
-
-```ruby
-# Time expensive operations
-def process_payment(order)
-  EzlogsRubyAgent.timing('payment_processing') do
-    PaymentProcessor.charge(order)
-  end
-end
-
-# Custom timing with metadata
-def complex_operation
-  start_time = Time.current
-  
-  # ... do work ...
-  
-  duration_ms = (Time.current - start_time) * 1000
-  EzlogsRubyAgent.record_metric('complex_operation_duration', duration_ms, {
-    operation_type: 'data_processing',
-    records_processed: records.count
-  })
-end
-```
-
-### Custom Metrics
-
-```ruby
-# Record business metrics
-EzlogsRubyAgent.record_metric('orders_per_minute', 1, { 
-  region: 'us-east',
-  customer_tier: 'premium'
-})
-
-# Track user actions
-EzlogsRubyAgent.record_metric('user_login', 1, {
-  auth_method: 'email',
-  success: true
-})
-```
-
-## 🧪 Development & Testing
-
-### Debug Mode
-
-Enable debug mode in development to see events in real-time:
-
-```ruby
-# config/environments/development.rb
-EzlogsRubyAgent.debug_mode = true
-```
-
-This will:
-- Log events to the console
-- Capture events in memory for inspection
-- Provide detailed error messages
+## 🧪 Testing Your Setup
 
 ### Test Mode
 
-Use test mode in your test suite to verify event tracking:
+Enable test mode to capture events in memory for testing:
 
 ```ruby
-# spec/support/ezlogs_helper.rb
+# spec/spec_helper.rb
 RSpec.configure do |config|
   config.before(:each) do
     EzlogsRubyAgent.test_mode do
-      # All events captured in memory
+      # Events captured in memory for testing
     end
   end
   
@@ -321,110 +279,85 @@ RSpec.configure do |config|
 end
 ```
 
-### Testing Event Tracking
+### Event Assertions
 
 ```ruby
-# spec/controllers/orders_controller_spec.rb
-RSpec.describe OrdersController, type: :controller do
-  it "tracks order creation" do
-    post :create, params: { order: { total: 99.99 } }
-    
-    events = EzlogsRubyAgent.captured_events
-    expect(events).to include(
-      hash_including(
-        event_type: 'order',
-        action: 'created',
-        metadata: hash_including(total: 99.99)
-      )
+it "tracks order creation" do
+  post "/orders", params: { order: { amount: 100 } }
+  
+  events = EzlogsRubyAgent.captured_events
+  expect(events).to include(
+    hash_including(
+      event_type: 'http.request',
+      action: 'POST /orders'
     )
-  end
+  )
+  
+  expect(events).to include(
+    hash_including(
+      event_type: 'data.change',
+      action: 'order.create'
+    )
+  )
 end
 ```
 
 ## 🔧 Configuration Options
 
+### Zero-Config Defaults
+
+EZLogs Ruby Agent comes with intelligent defaults:
+
+- **Service Name**: Auto-detected from Rails app name
+- **Environment**: Auto-detected from `Rails.env`
+- **All Collectors**: Enabled by default
+- **Security**: PII detection enabled
+- **Performance**: Optimized for production
+
 ### Basic Configuration
 
 ```ruby
-EzlogsRubyAgent.configure do |c|
-  # Required settings
-  c.service_name = 'my-awesome-app'
-  c.environment = Rails.env
+# config/initializers/ezlogs_ruby_agent.rb
+EzlogsRubyAgent.configure do |config|
+  # Core settings
+  config.service_name = 'my-awesome-app'
+  config.environment = Rails.env
   
-  # Optional: Customize what to track
-  c.collect do |collect|
-    collect.http_requests = true
-    collect.database_changes = true
-    collect.background_jobs = true
-  end
-  
-  # Optional: Security settings
-  c.security do |security|
-    security.auto_detect_pii = true
-    security.sanitize_fields = ['password', 'token']
-  end
-  
-  # Optional: Performance tuning
-  c.performance do |perf|
-    perf.sample_rate = 1.0  # 100% of events
-    perf.buffer_size = 1000
+  # Delivery settings (where events are sent)
+  config.delivery do |delivery|
+    delivery.endpoint = 'https://logs.your-domain.com/events'
+    delivery.timeout = 30
+    delivery.flush_interval = 5.0
   end
 end
 ```
 
 ### Environment Variables
 
-You can also configure via environment variables:
-
 ```bash
-export EZLOGS_SERVICE_NAME="my-awesome-app"
+# Core settings
+export EZLOGS_SERVICE_NAME="my-app"
 export EZLOGS_ENVIRONMENT="production"
-export EZLOGS_SAMPLE_RATE="0.1"
-export EZLOGS_BUFFER_SIZE="5000"
+
+# Delivery settings
+export EZLOGS_ENDPOINT="https://logs.your-domain.com/events"
+export EZLOGS_API_KEY="your-api-key"
 ```
 
-Then load them in your configuration:
+## 🚀 Next Steps
 
-```ruby
-EzlogsRubyAgent.configure do |c|
-  c.load_from_environment!
-end
-```
-
-## 🚨 Common Issues & Solutions
-
-### Events Not Appearing
-
-1. **Check configuration**: Ensure `service_name` and `environment` are set
-2. **Verify initialization**: Make sure the initializer is loaded
-3. **Enable debug mode**: Set `EzlogsRubyAgent.debug_mode = true` to see events
-
-### Performance Issues
-
-1. **Reduce sample rate**: Set `sample_rate` to 0.1 for high-traffic apps
-2. **Increase buffer size**: Set `buffer_size` to 5000+ for batch processing
-3. **Monitor memory**: Check `EzlogsRubyAgent.health_status`
-
-### Security Concerns
-
-1. **Enable PII detection**: Set `auto_detect_pii = true`
-2. **Sanitize sensitive fields**: Add fields to `sanitize_fields` array
-3. **Set payload limits**: Configure `max_payload_size`
-
-## 📚 Next Steps
-
-- **[Configuration Guide](configuration.md)** - Advanced configuration options
-- **[Performance Guide](performance.md)** - Optimization and tuning
-- **[Security Guide](security.md)** - Security best practices
-- **[API Reference](../lib/ezlogs_ruby_agent.rb)** - Complete API documentation
-- **[Examples](../examples/)** - Complete example applications
+1. **Deploy to Production**: Your app is now tracking events automatically!
+2. **Monitor Events**: Check your Go server logs to see events flowing
+3. **Add Custom Events**: Track business-specific events as needed
+4. **Configure Security**: Set up PII detection and field filtering
+5. **Optimize Performance**: Adjust buffer sizes and delivery settings
 
 ## 🆘 Need Help?
 
-- **Documentation**: [https://dezsirazvan.github.io/ezlogs_ruby_agent/](https://dezsirazvan.github.io/ezlogs_ruby_agent/)
-- **Issues**: [GitHub Issues](https://github.com/dezsirazvan/ezlogs_ruby_agent/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/dezsirazvan/ezlogs_ruby_agent/discussions)
+- **Documentation**: [docs/](docs/)
+- **Issues**: [GitHub Issues](https://github.com/your-org/ezlogs_ruby_agent/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/your-org/ezlogs_ruby_agent/discussions)
 
 ---
 
-**You're all set!** Your Rails application is now tracking events with zero performance impact. Start exploring the data and building AI-powered insights! 🚀 
+**You're all set! Your Rails app is now tracking events with perfect correlation.** 🎉 

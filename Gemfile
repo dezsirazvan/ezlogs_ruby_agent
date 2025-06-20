@@ -15,6 +15,8 @@ gem 'rails', '~> 6.1'
 
 gem "timecop", "~> 0.9"
 gem "webmock", "~> 3.18"
+gem "json", "~> 2.6"
+gem "climate_control", "~> 1.0"
 
 gem 'mutex_m'
 gem 'ostruct'

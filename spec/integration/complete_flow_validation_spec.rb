@@ -21,9 +21,12 @@ RSpec.describe 'Complete Event Flow Validation', type: :integration do
     EzlogsRubyAgent.configure do |config|
       config.service_name = 'test-app'
       config.environment = 'test'
-      config.capture_http = true
-      config.capture_callbacks = true
-      config.capture_jobs = true
+      config.instrumentation.http = true
+      config.instrumentation.active_record = true
+      config.instrumentation.active_job = true
+      config.instrumentation.sidekiq = true
+      config.security.auto_detect_pii = true
+      config.security.sensitive_fields = %w[password token]
     end
 
     # Enable test mode to capture events
@@ -288,13 +291,5 @@ RSpec.describe 'Complete Event Flow Validation', type: :integration do
       expect(http_event[:event][:metadata][:params][:credit_card]).to eq('[REDACTED]')
       expect(http_event[:event][:metadata][:params][:safe_field]).to eq('public data')
     end
-  end
-end
-
-# Mock job class for testing
-class WelcomeEmailJob < ActiveJob::Base
-  def perform(user_id:)
-    # Simulate job execution
-    sleep(0.001) # Simulate work
   end
 end

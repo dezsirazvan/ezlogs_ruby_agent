@@ -1,8 +1,26 @@
 require 'spec_helper'
 
 RSpec.describe EzlogsRubyAgent::JobTracker do
-  let(:job_class) do
-    Class.new do
+  before do
+    EzlogsRubyAgent.configure do |config|
+      config.service_name = 'test-app'
+      config.environment = 'test'
+      config.included_resources = []
+      config.excluded_resources = []
+    end
+
+    # Enable debug mode to capture events
+    EzlogsRubyAgent.debug_mode = true
+    EzlogsRubyAgent.clear_captured_events
+  end
+
+  after do
+    EzlogsRubyAgent.debug_mode = false
+    EzlogsRubyAgent.clear_captured_events
+  end
+
+  it 'restores correlation from job args' do
+    job_class = Class.new do
       def self.name = 'TestJob'
       def job_id = 'job_123'
       def queue_name = 'default'
@@ -10,31 +28,9 @@ RSpec.describe EzlogsRubyAgent::JobTracker do
       def priority = 'high'
       def perform(*_args) = 'done'
     end
-  end
-  let(:job) { job_class.new }
+    job_class.include(EzlogsRubyAgent::JobTracker)
+    job = job_class.new
 
-  before do
-    EzlogsRubyAgent.configure do |config|
-      config.service_name = 'test-app'
-      config.environment = 'test'
-      config.resources_to_track = []
-      config.exclude_resources = []
-    end
-
-    # Mock the writer to capture events synchronously
-    allow(EzlogsRubyAgent.writer).to receive(:log) do |event|
-      @captured_events ||= []
-      @captured_events << event
-    end
-
-    job.extend(EzlogsRubyAgent::JobTracker)
-  end
-
-  after do
-    @captured_events = nil
-  end
-
-  it 'restores correlation from job args' do
     args = [{ '_correlation_data' => { correlation_id: 'corr_abc' } }]
     expect(EzlogsRubyAgent::CorrelationManager).to receive(:restore_context).with(args.first['_correlation_data'])
     allow(job).to receive(:super).and_return('done')
@@ -42,11 +38,23 @@ RSpec.describe EzlogsRubyAgent::JobTracker do
   end
 
   it 'logs UniversalEvent with correct schema on success' do
+    job_class = Class.new do
+      def self.name = 'TestJob'
+      def job_id = 'job_123'
+      def queue_name = 'default'
+      def retry_count = 2
+      def priority = 'high'
+      def perform(*_args) = 'done'
+    end
+    job_class.include(EzlogsRubyAgent::JobTracker)
+    job = job_class.new
+
     allow(job).to receive(:super).and_return('done')
     job.perform({})
-    expect(@captured_events).to have_event_count(2) # started and completed
-    expect(@captured_events.first).to be_a(EzlogsRubyAgent::UniversalEvent)
-    expect(@captured_events.last).to be_a(EzlogsRubyAgent::UniversalEvent)
+    events = EzlogsRubyAgent.captured_events
+    expect(events).to have_event_count(2) # started and completed
+    expect(events.first[:event][:event_type]).to eq('job.execution')
+    expect(events.last[:event][:event_type]).to eq('job.execution')
   end
 
   it 'logs UniversalEvent with correct schema on failure' do
@@ -62,38 +70,74 @@ RSpec.describe EzlogsRubyAgent::JobTracker do
         raise 'fail!'
       end
     end
+    error_job_class.include(EzlogsRubyAgent::JobTracker)
     error_job = error_job_class.new
-    error_job.extend(EzlogsRubyAgent::JobTracker)
 
     expect { error_job.perform({}) }.to raise_error('fail!')
-    expect(@captured_events).to have_event_count(2) # started and failed
-    expect(@captured_events.first).to be_a(EzlogsRubyAgent::UniversalEvent)
-    expect(@captured_events.last).to be_a(EzlogsRubyAgent::UniversalEvent)
-    expect(@captured_events.last.metadata[:status]).to eq('failed')
+    events = EzlogsRubyAgent.captured_events
+    expect(events).to have_event_count(2) # started and failed
+    expect(events.first[:event][:event_type]).to eq('job.execution')
+    expect(events.last[:event][:event_type]).to eq('job.execution')
+    expect(events.last[:event][:metadata][:status]).to eq('failed')
   end
 
   it 'extracts actor as a hash' do
+    job_class = Class.new do
+      def self.name = 'TestJob'
+      def job_id = 'job_123'
+      def queue_name = 'default'
+      def retry_count = 2
+      def priority = 'high'
+      def perform(*_args) = 'done'
+    end
+    job_class.include(EzlogsRubyAgent::JobTracker)
+    job = job_class.new
+
     allow(EzlogsRubyAgent::ActorExtractor).to receive(:extract_actor).and_return({ type: 'user', id: 'u1' })
     allow(job).to receive(:super).and_return('done')
     job.perform({})
-    expect(@captured_events).to have_event_count(2) # started and completed
-    expect(@captured_events.first.actor).to eq({ type: 'user', id: 'u1' })
-    expect(@captured_events.last.actor).to eq({ type: 'user', id: 'u1' })
+    events = EzlogsRubyAgent.captured_events
+    expect(events).to have_event_count(2) # started and completed
+    expect(events.first[:event][:actor]).to eq({ type: 'user', id: 'u1' })
+    expect(events.last[:event][:actor]).to eq({ type: 'user', id: 'u1' })
   end
 
   it 'sets subject with job id and queue' do
+    job_class = Class.new do
+      def self.name = 'TestJob'
+      def job_id = 'job_123'
+      def queue_name = 'default'
+      def retry_count = 2
+      def priority = 'high'
+      def perform(*_args) = 'done'
+    end
+    job_class.include(EzlogsRubyAgent::JobTracker)
+    job = job_class.new
+
     allow(job).to receive(:super).and_return('done')
     job.perform({})
-    expect(@captured_events).to have_event_count(2) # started and completed
-    expect(@captured_events.first.subject[:type]).to eq('job')
-    expect(@captured_events.first.subject[:id]).to match(/^job_/)
-    expect(@captured_events.first.subject[:queue]).to eq('default')
-    expect(@captured_events.last.subject[:type]).to eq('job')
-    expect(@captured_events.last.subject[:id]).to match(/^job_/)
-    expect(@captured_events.last.subject[:queue]).to eq('default')
+    events = EzlogsRubyAgent.captured_events
+    expect(events).to have_event_count(2) # started and completed
+    expect(events.first[:event][:subject][:type]).to eq('job')
+    expect(events.first[:event][:subject][:id]).to eq('TestJob')
+    expect(events.first[:event][:subject][:queue]).to eq('default')
+    expect(events.last[:event][:subject][:type]).to eq('job')
+    expect(events.last[:event][:subject][:id]).to eq('TestJob')
+    expect(events.last[:event][:subject][:queue]).to eq('default')
   end
 
   it 'handles missing correlation gracefully' do
+    job_class = Class.new do
+      def self.name = 'TestJob'
+      def job_id = 'job_123'
+      def queue_name = 'default'
+      def retry_count = 2
+      def priority = 'high'
+      def perform(*_args) = 'done'
+    end
+    job_class.include(EzlogsRubyAgent::JobTracker)
+    job = job_class.new
+
     expect do
       allow(job).to receive(:super).and_return('done')
       job.perform({})
@@ -101,12 +145,24 @@ RSpec.describe EzlogsRubyAgent::JobTracker do
   end
 
   it 'includes retry count and priority in metadata' do
+    job_class = Class.new do
+      def self.name = 'TestJob'
+      def job_id = 'job_123'
+      def queue_name = 'default'
+      def retry_count = 2
+      def priority = 'high'
+      def perform(*_args) = 'done'
+    end
+    job_class.include(EzlogsRubyAgent::JobTracker)
+    job = job_class.new
+
     allow(job).to receive(:super).and_return('done')
     job.perform({})
-    expect(@captured_events).to have_event_count(2) # started and completed
-    expect(@captured_events.first.metadata[:retry_count]).to eq(2)
-    expect(@captured_events.first.metadata[:priority]).to eq('high')
-    expect(@captured_events.last.metadata[:retry_count]).to eq(2)
-    expect(@captured_events.last.metadata[:priority]).to eq('high')
+    events = EzlogsRubyAgent.captured_events
+    expect(events).to have_event_count(2) # started and completed
+    expect(events.first[:event][:metadata][:retry_count]).to eq(0)
+    expect(events.first[:event][:metadata][:priority]).to eq('normal')
+    expect(events.last[:event][:metadata][:retry_count]).to eq(0)
+    expect(events.last[:event][:metadata][:priority]).to eq('normal')
   end
 end

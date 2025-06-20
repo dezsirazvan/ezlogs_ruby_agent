@@ -54,9 +54,9 @@ RSpec.describe EzlogsRubyAgent::Railtie do
 
   before do
     EzlogsRubyAgent.configure do |config|
-      config.capture_http = true
-      config.capture_callbacks = true
-      config.capture_jobs = true
+      config.instrumentation.http = true
+      config.instrumentation.active_record = true
+      config.instrumentation.active_job = true
     end
     stub_const('Rails', double('Rails', application: double('App', config: {})))
   end
@@ -118,27 +118,27 @@ RSpec.describe EzlogsRubyAgent::Railtie do
   end
 
   it 'does not insert HttpTracker middleware if capture_http is false' do
-    EzlogsRubyAgent.configure { |c| c.capture_http = false }
+    EzlogsRubyAgent.configure { |c| c.instrumentation.http = false }
     expect(app.middleware).not_to receive(:use)
     EzlogsRubyAgent::Railtie.initializers.find { |i| i.name == 'ezlogs_ruby_agent.insert_middleware' }.run(app)
   end
 
   it 'does not include CallbacksTracker if capture_callbacks is false' do
-    EzlogsRubyAgent.configure { |c| c.capture_callbacks = false }
+    EzlogsRubyAgent.configure { |c| c.instrumentation.active_record = false }
     expect do
       EzlogsRubyAgent::Railtie.initializers.find { |i| i.name == 'ezlogs_ruby_agent.include_modules' }.run(nil)
     end.not_to raise_error
   end
 
   it 'does not prepend JobTracker if capture_jobs is false' do
-    EzlogsRubyAgent.configure { |c| c.capture_jobs = false }
+    EzlogsRubyAgent.configure { |c| c.instrumentation.active_job = false }
     expect do
       EzlogsRubyAgent::Railtie.initializers.find { |i| i.name == 'ezlogs_ruby_agent.include_modules' }.run(nil)
     end.not_to raise_error
   end
 
   it 'does not configure Sidekiq if capture_jobs is false' do
-    EzlogsRubyAgent.configure { |c| c.capture_jobs = false }
+    EzlogsRubyAgent.configure { |c| c.instrumentation.sidekiq = false }
     expect do
       EzlogsRubyAgent::Railtie.initializers.find { |i| i.name == 'ezlogs_ruby_agent.configure_sidekiq' }.run(nil)
     end.not_to raise_error
@@ -146,14 +146,15 @@ RSpec.describe EzlogsRubyAgent::Railtie do
 
   it 'sets job_adapter to :sidekiq if Sidekiq is defined' do
     stub_const('Sidekiq', Class.new)
-    EzlogsRubyAgent.configure { |c| c.capture_jobs = true }
+    EzlogsRubyAgent.configure { |c| c.instrumentation.active_job = true }
     EzlogsRubyAgent::Railtie.initializers.find { |i| i.name == 'ezlogs_ruby_agent.configure_jobs' }.run(nil)
     expect(EzlogsRubyAgent.config.job_adapter).to eq(:sidekiq)
   end
 
   it 'sets job_adapter to :active_job if Sidekiq is not defined' do
     hide_const('Sidekiq')
-    EzlogsRubyAgent.configure { |c| c.capture_jobs = true }
+    stub_const('ActiveJob', Class.new)
+    EzlogsRubyAgent.configure { |c| c.instrumentation.active_job = true }
     EzlogsRubyAgent::Railtie.initializers.find { |i| i.name == 'ezlogs_ruby_agent.configure_jobs' }.run(nil)
     expect(EzlogsRubyAgent.config.job_adapter).to eq(:active_job)
   end
@@ -163,7 +164,7 @@ RSpec.describe EzlogsRubyAgent::Railtie do
   end
 
   it 'prepends JobTracker into ActiveJob when on_load is triggered' do
-    EzlogsRubyAgent.configure { |c| c.capture_jobs = true }
+    EzlogsRubyAgent.configure { |c| c.instrumentation.active_job = true }
     dummy_aj = Class.new
     expect(dummy_aj).to receive(:prepend).with(EzlogsRubyAgent::JobTracker).and_call_original
     allow(ActiveSupport).to receive(:on_load).with(:active_record)
@@ -173,7 +174,7 @@ RSpec.describe EzlogsRubyAgent::Railtie do
   end
 
   it 'adds SidekiqJobTracker and JobEnqueueMiddleware when Sidekiq middleware blocks are called' do
-    EzlogsRubyAgent.configure { |c| c.capture_jobs = true }
+    EzlogsRubyAgent.configure { |c| c.instrumentation.sidekiq = true }
     sidekiq_class = Class.new
     server_chain = double('ServerChain')
     client_chain = double('ClientChain')
@@ -187,5 +188,118 @@ RSpec.describe EzlogsRubyAgent::Railtie do
     allow(sidekiq_class).to receive(:configure_client).and_yield(client_config)
     stub_const('Sidekiq', sidekiq_class)
     EzlogsRubyAgent::Railtie.initializers.find { |i| i.name == 'ezlogs_ruby_agent.configure_sidekiq' }.run(nil)
+  end
+
+  describe 'private class methods' do
+    let(:railtie) { EzlogsRubyAgent::Railtie }
+
+    it 'sidekiq_available? returns true if Sidekiq is defined' do
+      stub_const('Sidekiq', Class.new)
+      expect(railtie.send(:sidekiq_available?)).to be_truthy
+    end
+
+    it 'sidekiq_available? returns false if Sidekiq is not defined' do
+      hide_const('Sidekiq')
+      expect(railtie.send(:sidekiq_available?)).to be_falsey
+    end
+
+    it 'detect_job_adapter returns :sidekiq if Sidekiq is available' do
+      stub_const('Sidekiq', Class.new)
+      expect(railtie.send(:detect_job_adapter)).to eq(:sidekiq)
+    end
+
+    it 'detect_job_adapter returns :active_job if ActiveJob is defined and Sidekiq is not' do
+      hide_const('Sidekiq')
+      stub_const('ActiveJob', Class.new)
+      expect(railtie.send(:detect_job_adapter)).to eq(:active_job)
+    end
+
+    it 'detect_job_adapter returns :none if neither Sidekiq nor ActiveJob is defined' do
+      hide_const('Sidekiq')
+      hide_const('ActiveJob')
+      expect(railtie.send(:detect_job_adapter)).to eq(:none)
+    end
+
+    it 'configure_sidekiq_server logs a warning if an error occurs' do
+      stub_const('Sidekiq', Class.new)
+      allow(Sidekiq).to receive(:configure_server).and_raise(StandardError.new('fail'))
+      logger = double('Logger', warn: nil)
+      stub_const('Rails', double('Rails', logger: logger))
+      expect(logger).to receive(:warn).with(/Failed to configure Sidekiq server/)
+      railtie.send(:configure_sidekiq_server)
+    end
+
+    it 'configure_sidekiq_client logs a warning if an error occurs' do
+      stub_const('Sidekiq', Class.new)
+      allow(Sidekiq).to receive(:configure_client).and_raise(StandardError.new('fail'))
+      logger = double('Logger', warn: nil)
+      stub_const('Rails', double('Rails', logger: logger))
+      expect(logger).to receive(:warn).with(/Failed to configure Sidekiq client/)
+      railtie.send(:configure_sidekiq_client)
+    end
+
+    describe '#validate_configuration' do
+      let(:config) { EzlogsRubyAgent.config }
+      let(:logger) { double('Logger', warn: nil, info: nil, error: nil) }
+
+      before do
+        stub_const('Rails', double('Rails', logger: logger))
+      end
+
+      it 'logs warnings for missing service_name, environment, and delivery endpoint' do
+        # service_name nil
+        allow(config).to receive(:service_name).and_return(nil)
+        allow(config).to receive(:environment).and_return('test')
+        allow(config).to receive(:delivery).and_return(OpenStruct.new(endpoint: 'ok'))
+        expect(logger).to receive(:warn).with(/service_name is not configured/)
+        railtie.send(:validate_configuration)
+
+        # service_name empty
+        allow(config).to receive(:service_name).and_return('')
+        expect(logger).to receive(:warn).with(/service_name is not configured/)
+        railtie.send(:validate_configuration)
+
+        # environment nil
+        allow(config).to receive(:service_name).and_return('ok')
+        allow(config).to receive(:environment).and_return(nil)
+        expect(logger).to receive(:warn).with(/environment is not configured/)
+        railtie.send(:validate_configuration)
+
+        # environment empty
+        allow(config).to receive(:environment).and_return('')
+        expect(logger).to receive(:warn).with(/environment is not configured/)
+        railtie.send(:validate_configuration)
+
+        # delivery.endpoint nil
+        allow(config).to receive(:delivery).and_return(OpenStruct.new(endpoint: nil))
+        expect(logger).to receive(:warn).with(/delivery endpoint is not configured/)
+        railtie.send(:validate_configuration)
+
+        # delivery.endpoint empty
+        allow(config).to receive(:delivery).and_return(OpenStruct.new(endpoint: ''))
+        expect(logger).to receive(:warn).with(/delivery endpoint is not configured/)
+        railtie.send(:validate_configuration)
+      end
+
+      it 'logs info when configuration is valid' do
+        allow(config).to receive(:service_name).and_return('test-service')
+        allow(config).to receive(:environment).and_return('test')
+        allow(config).to receive(:delivery).and_return(OpenStruct.new(endpoint: 'http://localhost'))
+        expect(logger).to receive(:info).with(/Configuration validated/)
+        railtie.send(:validate_configuration)
+      end
+
+      it 'logs error if an exception is raised' do
+        allow(config).to receive(:service_name).and_raise(StandardError.new('fail'))
+        expect(logger).to receive(:error).with(/Configuration validation failed/)
+        railtie.send(:validate_configuration)
+      end
+
+      it 'does nothing if Rails.logger is nil' do
+        stub_const('Rails', double('Rails', logger: nil))
+        allow(config).to receive(:service_name).and_return(nil)
+        expect { railtie.send(:validate_configuration) }.not_to raise_error
+      end
+    end
   end
 end
