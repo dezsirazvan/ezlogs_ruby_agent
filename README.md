@@ -32,14 +32,31 @@ Run:
 bundle install
 ```
 
-### 2. Configure (Optional)
+### 2. Configure
 
 Create `config/initializers/ezlogs_ruby_agent.rb`:
 
 ```ruby
 EzlogsRubyAgent.configure do |config|
-  # That's it! All collectors enabled by default
-  # Service name and environment auto-detected
+  # Core settings
+  config.service_name = 'my-awesome-app'
+  config.environment = Rails.env
+  
+  # Delivery settings (REQUIRED for production)
+  config.delivery do |delivery|
+    delivery.endpoint = 'https://logs.your-domain.com/events'
+    delivery.headers = {
+      'Authorization' => 'Bearer your-api-key-here',
+      'Content-Type' => 'application/json'
+    }
+  end
+end
+```
+
+**For development/testing only**, you can use zero-config (events captured in memory):
+```ruby
+EzlogsRubyAgent.configure do |config|
+  # Zero-config for development
 end
 ```
 
@@ -56,9 +73,9 @@ All events are correlated with the same ID across the entire request lifecycle!
 
 ## 📦 Installation & Setup
 
-### Zero-Config (Recommended)
+### Zero-Config (Development/Testing)
 
-EZLogs Ruby Agent works out of the box with intelligent defaults:
+EZLogs Ruby Agent works out of the box for development and testing:
 
 ```ruby
 # config/initializers/ezlogs_ruby_agent.rb
@@ -67,8 +84,11 @@ EzlogsRubyAgent.configure do |config|
   # Environment: Auto-detected from Rails.env
   # All collectors: Enabled by default
   # Security: PII detection enabled
+  # Note: Events are captured in memory for development/testing
 end
 ```
+
+**For production, you must configure delivery settings (endpoint and API key).**
 
 ### Basic Configuration
 
@@ -79,9 +99,13 @@ EzlogsRubyAgent.configure do |config|
   config.service_name = 'my-awesome-app'
   config.environment = Rails.env
   
-  # Delivery settings (where events are sent)
+  # Delivery settings (REQUIRED for production)
   config.delivery do |delivery|
     delivery.endpoint = 'https://logs.your-domain.com/events'
+    delivery.headers = {
+      'Authorization' => 'Bearer your-api-key-here',
+      'Content-Type' => 'application/json'
+    }
     delivery.timeout = 30
     delivery.flush_interval = 5.0
   end
@@ -95,7 +119,7 @@ end
 export EZLOGS_SERVICE_NAME="my-app"
 export EZLOGS_ENVIRONMENT="production"
 
-# Delivery settings
+# Delivery settings (REQUIRED)
 export EZLOGS_ENDPOINT="https://logs.your-domain.com/events"
 export EZLOGS_API_KEY="your-api-key"
 ```
