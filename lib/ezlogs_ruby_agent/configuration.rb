@@ -67,17 +67,21 @@ module EzlogsRubyAgent
         enable_async: true
       )
 
-      # Delivery settings with sensible defaults
+      # Delivery settings with sensible defaults for local Go agent
       @delivery = OpenStruct.new(
-        endpoint: nil,
-        timeout: 30,
-        retry_attempts: 3,
-        retry_backoff: 1.0,
-        batch_size: 100,
-        flush_interval: 5.0,
+        endpoint: ENV['EZLOGS_ENDPOINT'] || 'http://localhost:8080/events',
+        timeout: (ENV['EZLOGS_TIMEOUT'] || 30).to_i,
+        retry_attempts: (ENV['EZLOGS_RETRY_ATTEMPTS'] || 3).to_i,
+        retry_backoff: (ENV['EZLOGS_RETRY_BACKOFF'] || 1.0).to_f,
+        batch_size: (ENV['EZLOGS_BATCH_SIZE'] || 100).to_i,
+        flush_interval: (ENV['EZLOGS_FLUSH_INTERVAL'] || 5.0).to_f,
         headers: {},
-        circuit_breaker_threshold: 5,
-        circuit_breaker_timeout: 60
+        circuit_breaker_threshold: (ENV['EZLOGS_CIRCUIT_BREAKER_THRESHOLD'] || 5).to_i,
+        circuit_breaker_timeout: (ENV['EZLOGS_CIRCUIT_BREAKER_TIMEOUT'] || 60).to_i,
+        # Local agent specific settings
+        local_agent: true,
+        agent_health_check: true,
+        agent_health_endpoint: '/health'
       )
 
       # Correlation settings for flow tracking
@@ -322,15 +326,25 @@ module EzlogsRubyAgent
       if @delivery.endpoint
         begin
           uri = URI.parse(@delivery.endpoint)
-          validation.add_error("endpoint must be a valid URL") unless %w[http https].include?(uri.scheme)
+          validation.add_error("endpoint must be a valid URL") unless uri.scheme && uri.host
+          # For local agent, warn about non-localhost endpoints
+          if @delivery.local_agent && uri.host && !uri.host.match?(/localhost|127\.0\.0\.1/)
+            validation.add_warning("Local agent configured but endpoint is not localhost: #{@delivery.endpoint}")
+          end
         rescue URI::InvalidURIError
           validation.add_error("endpoint must be a valid URL")
         end
+      else
+        validation.add_warning("No delivery endpoint configured - events will be captured in memory only")
       end
-      validation.add_error("timeout must be positive") if @delivery.timeout <= 0
-      validation.add_error("timeout cannot exceed 60 seconds") if @delivery.timeout > 60
-      validation.add_error("flush_interval must be positive") if @delivery.flush_interval <= 0
-      validation.add_error("batch_size must be positive") if @delivery.batch_size <= 0
+
+      validation.add_error("Timeout must be positive") if @delivery.timeout <= 0
+      validation.add_error("Retry attempts must be non-negative") if @delivery.retry_attempts < 0
+      validation.add_error("Retry backoff must be positive") if @delivery.retry_backoff <= 0
+      validation.add_error("Batch size must be positive") if @delivery.batch_size <= 0
+      validation.add_error("Flush interval must be positive") if @delivery.flush_interval <= 0
+      validation.add_error("Circuit breaker threshold must be positive") if @delivery.circuit_breaker_threshold <= 0
+      validation.add_error("Circuit breaker timeout must be positive") if @delivery.circuit_breaker_timeout <= 0
     end
 
     def validate_correlation_settings(validation)

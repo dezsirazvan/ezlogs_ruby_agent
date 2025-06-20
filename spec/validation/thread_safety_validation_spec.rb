@@ -270,6 +270,12 @@ RSpec.describe 'Thread Safety Production Validation', type: :validation do
   end
 
   describe 'Delivery Engine Thread Safety' do
+    before do
+      # Stub all HTTP requests to localhost:8080
+      stub_request(:post, %r{http://localhost:8080/events})
+        .to_return(status: 200, body: '{"status":"ok"}', headers: {})
+    end
+
     it 'handles concurrent delivery attempts safely' do
       engine = EzlogsRubyAgent::DeliveryEngine.new(config)
       delivery_results = Concurrent::Array.new
@@ -329,6 +335,12 @@ RSpec.describe 'Thread Safety Production Validation', type: :validation do
   end
 
   describe 'Memory and Resource Management' do
+    before do
+      # Stub all HTTP requests to localhost:8080 for connection tests
+      stub_request(:post, %r{http://localhost:8080/events})
+        .to_return(status: 200, body: '{"status":"ok"}', headers: {})
+    end
+
     it 'does not leak memory under concurrent load' do
       initial_memory = get_memory_usage
       events = Concurrent::Array.new

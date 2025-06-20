@@ -253,4 +253,61 @@ RSpec.describe EzlogsRubyAgent::DeliveryEngine do
       expect(engine.connection_pool.closed?).to be true
     end
   end
+
+  describe 'local agent features' do
+    before do
+      config.delivery.endpoint = 'http://localhost:8080/events'
+      config.delivery.agent_health_check = true
+      config.delivery.agent_health_endpoint = '/health'
+      config.service_name = 'test-app'
+      config.environment = 'test'
+    end
+
+    it 'performs health check on local agent' do
+      stub_request(:get, 'http://localhost:8080/health')
+        .with(headers: { 'User-Agent' => /EzlogsRubyAgent/ })
+        .to_return(status: 200, body: '{"status":"healthy"}')
+
+      result = engine.agent_health_check
+
+      expect(result[:healthy]).to be true
+      expect(result[:status_code]).to eq(200)
+    end
+
+    it 'handles health check failures gracefully' do
+      stub_request(:get, 'http://localhost:8080/health')
+        .to_return(status: 503, body: '{"status":"unhealthy"}')
+
+      result = engine.agent_health_check
+
+      expect(result[:healthy]).to be false
+      expect(result[:status_code]).to eq(503)
+    end
+
+    it 'includes local agent headers in requests' do
+      stub_request(:post, 'http://localhost:8080/events')
+        .with(
+          headers: {
+            'X-Ezlogs-Agent' => 'ruby',
+            'X-Ezlogs-Version' => EzlogsRubyAgent::VERSION,
+            'X-Ezlogs-Service' => 'test-app',
+            'X-Ezlogs-Environment' => 'test'
+          }
+        )
+        .to_return(status: 200)
+
+      result = engine.deliver({ event_id: 'evt_123' })
+
+      expect(result.success?).to be true
+    end
+
+    it 'skips health check when disabled' do
+      config.delivery.agent_health_check = false
+
+      result = engine.agent_health_check
+
+      expect(result[:healthy]).to be true
+      expect(result[:message]).to eq('Health check disabled')
+    end
+  end
 end

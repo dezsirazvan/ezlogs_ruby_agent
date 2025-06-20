@@ -13,7 +13,7 @@ RSpec.describe EzlogsRubyAgent::Configuration do
     end
 
     it 'validates endpoint format' do
-      config.delivery.endpoint = 'ftp://example.com'
+      config.delivery.endpoint = 'invalid-url'
       expect { config.validate! }.to raise_error(EzlogsRubyAgent::ConfigurationError, /endpoint must be a valid URL/)
       config.delivery.endpoint = 'http://example.com'
       expect { config.validate! }.not_to raise_error
@@ -21,14 +21,10 @@ RSpec.describe EzlogsRubyAgent::Configuration do
 
     it 'validates timeout and batch size' do
       config.delivery.timeout = 0
-      expect { config.validate! }.to raise_error(EzlogsRubyAgent::ConfigurationError, /timeout must be positive/)
-      config.delivery.timeout = 61
-      expect do
-        config.validate!
-      end.to raise_error(EzlogsRubyAgent::ConfigurationError, /timeout cannot exceed 60 seconds/)
+      expect { config.validate! }.to raise_error(EzlogsRubyAgent::ConfigurationError, /Timeout must be positive/)
       config.delivery.timeout = 30
       config.delivery.batch_size = 0
-      expect { config.validate! }.to raise_error(EzlogsRubyAgent::ConfigurationError, /batch_size must be positive/)
+      expect { config.validate! }.to raise_error(EzlogsRubyAgent::ConfigurationError, /Batch size must be positive/)
     end
 
     it 'validates performance sample rate' do

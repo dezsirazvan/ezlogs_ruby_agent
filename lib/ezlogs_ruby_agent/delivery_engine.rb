@@ -352,6 +352,37 @@ module EzlogsRubyAgent
       end
     end
 
+    # Check if the Go agent is healthy and ready to receive events
+    #
+    # @return [Hash] Health check result with status and details
+    def agent_health_check
+      return { healthy: false, error: 'No endpoint configured' } unless @config.delivery.endpoint
+      return { healthy: true, message: 'Health check disabled' } unless @config.delivery.agent_health_check
+
+      health_endpoint = @config.delivery.agent_health_endpoint
+      health_url = URI.join(@config.delivery.endpoint, health_endpoint).to_s
+
+      begin
+        @connection_pool.with_connection do |http|
+          uri = URI.parse(health_url)
+          request = Net::HTTP::Get.new(uri.path)
+          request['User-Agent'] = "EzlogsRubyAgent/#{EzlogsRubyAgent::VERSION}"
+
+          response = http.request(request)
+
+          if response.code.to_i == 200
+            { healthy: true, status_code: response.code.to_i, response_time: Time.now }
+          else
+            { healthy: false, status_code: response.code.to_i, error: response.body }
+          end
+        end
+      rescue Timeout::Error => e
+        { healthy: false, error: "Health check timeout: #{e.message}" }
+      rescue StandardError => e
+        { healthy: false, error: "Health check failed: #{e.message}" }
+      end
+    end
+
     # Get health status of the delivery engine
     #
     # @return [Hash] Health status information
@@ -496,7 +527,11 @@ module EzlogsRubyAgent
     def build_headers(payload)
       headers = {
         'Content-Type' => 'application/json',
-        'User-Agent' => "EzlogsRubyAgent/#{EzlogsRubyAgent::VERSION}"
+        'User-Agent' => "EzlogsRubyAgent/#{EzlogsRubyAgent::VERSION}",
+        'X-Ezlogs-Agent' => 'ruby',
+        'X-Ezlogs-Version' => EzlogsRubyAgent::VERSION,
+        'X-Ezlogs-Service' => @config.service_name,
+        'X-Ezlogs-Environment' => @config.environment
       }
 
       headers['Content-Encoding'] = 'gzip' if payload.respond_to?(:compressed) && payload.compressed
