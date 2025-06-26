@@ -71,6 +71,7 @@ module EzlogsRubyAgent
           subject: extract_subject,
           metadata: build_enhanced_data_change_metadata(action, changes, previous_attributes, start_time),
           correlation_id: EzlogsRubyAgent::CorrelationManager.current_context&.correlation_id,
+          correlation_context: EzlogsRubyAgent::CorrelationManager.current_context,
           timing: build_comprehensive_data_change_timing(action, start_time)
         )
 

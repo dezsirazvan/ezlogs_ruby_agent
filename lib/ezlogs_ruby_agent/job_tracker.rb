@@ -82,6 +82,7 @@ module EzlogsRubyAgent
           subject: { type: 'job', id: self.class.name, queue: 'default' },
           metadata: build_enhanced_job_metadata(status, args, start_time, end_time, result, error),
           correlation_id: EzlogsRubyAgent::CorrelationManager.current_context&.correlation_id,
+          correlation_context: EzlogsRubyAgent::CorrelationManager.current_context,
           timing: build_comprehensive_job_timing(status, start_time, end_time)
         )
 

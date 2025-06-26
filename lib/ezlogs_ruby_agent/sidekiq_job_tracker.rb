@@ -78,7 +78,9 @@ module EzlogsRubyAgent
               job: job,
               worker: worker
             ),
-            correlation_id: correlation_data[:correlation_id] || job['correlation_id']
+            timing: build_comprehensive_sidekiq_timing(start_time, end_time, enqueued_at),
+            correlation_id: correlation_data[:correlation_id] || job['correlation_id'],
+            correlation_context: CorrelationManager.current_context
           )
           EzlogsRubyAgent.writer.log(event)
         rescue StandardError => e
@@ -121,6 +123,7 @@ module EzlogsRubyAgent
           queue: job_hash['queue'],
           args: job_hash['args']
         },
+        correlation_id: job_hash['correlation_id'],
         correlation_context: CorrelationManager.current_context
       )
     end
@@ -168,7 +171,7 @@ module EzlogsRubyAgent
       queue_wait_time_ms = enqueued_at ? ((start_time - Time.at(enqueued_at)) * 1000).round(3) : 0
       queue_wait_time_ms = [queue_wait_time_ms, 0].max # Ensure non-negative
 
-      {
+      timing = {
         enqueued_at: enqueued_at ? Time.at(enqueued_at).iso8601(3) : nil,
         started_at: start_time.iso8601(3),
         completed_at: end_time.iso8601(3),
@@ -178,6 +181,11 @@ module EzlogsRubyAgent
         cleanup_time_ms: estimate_sidekiq_cleanup_time,
         retry_delay_ms: extract_retry_delay_ms
       }
+
+      # Total time including queue wait (match job tracker format)
+      timing[:total_time_ms] = queue_wait_time_ms + execution_time_ms if queue_wait_time_ms > 0 && execution_time_ms > 0
+
+      timing.compact
     end
 
     def build_sidekiq_resource_consumption

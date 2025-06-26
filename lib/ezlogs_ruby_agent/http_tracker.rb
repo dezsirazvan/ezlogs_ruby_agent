@@ -58,6 +58,7 @@ module EzlogsRubyAgent
           subject: extract_subject(env),
           metadata: extract_enhanced_request_metadata(env, status, headers, response, start_time, end_time),
           correlation_id: correlation_context&.correlation_id,
+          correlation_context: correlation_context,
           timing: build_comprehensive_http_timing(start_time, end_time)
         )
 
