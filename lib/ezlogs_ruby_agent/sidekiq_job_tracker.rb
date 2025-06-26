@@ -8,16 +8,18 @@ module EzlogsRubyAgent
     def call(worker, job, _queue)
       config = EzlogsRubyAgent.config
       job_name = worker.class.name
-      # Restore correlation context from job hash if present
+      # For now, don't restore correlation context to prevent frozen hash issues
+      # TODO: Re-enable once we solve the frozen hash modification issue
       correlation_data = extract_correlation_data(job)
       correlation_context = nil
 
-      begin
-        correlation_context = CorrelationManager.restore_context(correlation_data)
-      rescue StandardError => e
-        warn "[Ezlogs] Failed to restore correlation context: #{e.message}"
-        correlation_context = nil
-      end
+      # Temporarily disabled to prevent FrozenError
+      # begin
+      #   correlation_context = CorrelationManager.restore_context(correlation_data)
+      # rescue StandardError => e
+      #   warn "[Ezlogs] Failed to restore correlation context: #{e.message}"
+      #   correlation_context = nil
+      # end
       return yield unless trackable_job?(job_name, config)
 
       start_time = Time.now
@@ -58,7 +60,7 @@ module EzlogsRubyAgent
               enqueued_at: job['enqueued_at']
             },
             timestamp: start_time,
-            correlation_context: correlation_context
+            correlation_id: correlation_data[:correlation_id] || job['correlation_id']
           )
           EzlogsRubyAgent.writer.log(event)
         rescue StandardError => e
