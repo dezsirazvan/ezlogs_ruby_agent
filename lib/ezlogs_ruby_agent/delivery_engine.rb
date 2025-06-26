@@ -365,7 +365,8 @@ module EzlogsRubyAgent
       begin
         @connection_pool.with_connection do |http|
           uri = URI.parse(health_url)
-          request = Net::HTTP::Get.new(uri.path)
+          path = uri.path.empty? ? '/' : uri.path
+          request = Net::HTTP::Get.new(path)
           request['User-Agent'] = "EzlogsRubyAgent/#{EzlogsRubyAgent::VERSION}"
 
           response = http.request(request)
@@ -431,7 +432,9 @@ module EzlogsRubyAgent
       headers = build_headers(payload_result)
 
       @connection_pool.with_connection do |http|
-        request = Net::HTTP::Post.new(URI.parse(@config.delivery.endpoint).path)
+        uri = URI.parse(@config.delivery.endpoint)
+        path = uri.path.empty? ? '/' : uri.path
+        request = Net::HTTP::Post.new(path)
         headers.each { |key, value| request[key] = value }
         request.body = payload_result.payload
 
@@ -466,7 +469,9 @@ module EzlogsRubyAgent
       headers = build_headers(payload)
 
       @connection_pool.with_connection do |http|
-        request = Net::HTTP::Post.new(URI.parse(@config.delivery.endpoint).path)
+        uri = URI.parse(@config.delivery.endpoint)
+        path = uri.path.empty? ? '/' : uri.path
+        request = Net::HTTP::Post.new(path)
         headers.each { |key, value| request[key] = value }
         request.body = payload
 
