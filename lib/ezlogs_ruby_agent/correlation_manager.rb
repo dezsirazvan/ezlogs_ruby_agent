@@ -28,7 +28,7 @@ module EzlogsRubyAgent
         @request_id = request_id
         @parent_event_id = parent_event_id
         @started_at = started_at || Time.now.utc
-        @metadata = metadata.dup.freeze
+        @metadata = metadata.dup
         freeze
       end
 
@@ -244,9 +244,28 @@ module EzlogsRubyAgent
       def restore_context(correlation_data)
         return nil unless correlation_data.is_a?(Hash)
 
-        context = Context.new(**correlation_data)
+        # Create unfrozen copy of metadata to avoid FrozenError in application code
+        unfrozen_data = correlation_data.dup
+        unfrozen_data[:metadata] = deep_dup(unfrozen_data[:metadata]) if unfrozen_data[:metadata].is_a?(Hash)
+
+        context = Context.new(**unfrozen_data)
         set_context(context)
         context
+      rescue StandardError => e
+        warn "[Ezlogs] Failed to restore correlation context: #{e.message}"
+        nil
+      end
+
+      # Deep duplicate nested hashes and arrays
+      def deep_dup(obj)
+        case obj
+        when Hash
+          obj.each_with_object({}) { |(key, value), new_hash| new_hash[key] = deep_dup(value) }
+        when Array
+          obj.map { |item| deep_dup(item) }
+        else
+          obj.duplicable? ? obj.dup : obj
+        end
       end
 
       private
