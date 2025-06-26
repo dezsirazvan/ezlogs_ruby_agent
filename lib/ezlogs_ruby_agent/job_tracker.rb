@@ -435,7 +435,13 @@ module EzlogsRubyAgent
       when Hash
         sanitize_hash_deeply(value, sensitive_fields)
       when Array
-        value.map { |v| sanitize_argument_value(v, sensitive_fields) }
+        # Create a duplicate to avoid modifying frozen arrays
+        begin
+          value.map { |v| sanitize_argument_value(v, sensitive_fields) }
+        rescue FrozenError
+          # If array is frozen, build a new one manually
+          value.to_a.map { |v| sanitize_argument_value(v, sensitive_fields) }
+        end
       when String
         if contains_sensitive_data?(value, sensitive_fields)
           '[REDACTED]'
@@ -449,7 +455,10 @@ module EzlogsRubyAgent
     end
 
     def sanitize_hash_deeply(hash, sensitive_fields)
-      hash.transform_values do |value|
+      # Create a duplicate to avoid modifying frozen hashes
+      hash_copy = hash.dup
+      
+      hash_copy.transform_values do |value|
         sanitize_argument_value(value, sensitive_fields)
       end.transform_keys do |key|
         # Redact sensitive keys
@@ -459,6 +468,18 @@ module EzlogsRubyAgent
           key
         end
       end
+    rescue FrozenError
+      # If we still can't modify it, build a new hash manually
+      sanitized = {}
+      hash.each do |key, value|
+        sanitized_key = if sensitive_fields.any? { |field| key.to_s.downcase.include?(field.downcase) }
+                          '[REDACTED_KEY]'
+                        else
+                          key
+                        end
+        sanitized[sanitized_key] = sanitize_argument_value(value, sensitive_fields)
+      end
+      sanitized
     end
 
     def contains_sensitive_data?(value, sensitive_fields)
