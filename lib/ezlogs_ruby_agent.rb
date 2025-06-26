@@ -1,4 +1,5 @@
 require 'json'
+require 'ezlogs_ruby_agent/version'
 require 'ezlogs_ruby_agent/railtie' if defined?(Rails)
 require 'ezlogs_ruby_agent/configuration'
 require 'ezlogs_ruby_agent/universal_event'
