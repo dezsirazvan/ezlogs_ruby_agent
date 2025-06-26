@@ -900,7 +900,7 @@ module EzlogsRubyAgent
 
       # Add custom patterns from config
       config = EzlogsRubyAgent.config
-      pii_patterns.merge!(config.custom_patterns || {})
+      pii_patterns.merge!(config.security&.custom_pii_patterns || {})
 
       hash.each do |key, value|
         current_path = path.empty? ? key.to_s : "#{path}.#{key}"
