@@ -98,14 +98,13 @@ module EzlogsRubyAgent
   end
 
   # Log custom event with correlation inheritance
-  def self.log_event(event_type:, action:, actor:, subject: nil, metadata: nil, timestamp: nil)
+  def self.log_event(event_type:, action:, actor:, subject: nil, metadata: nil)
     event = UniversalEvent.new(
       event_type: event_type,
       action: action,
       actor: actor,
       subject: subject,
-      metadata: metadata,
-      timestamp: timestamp
+      metadata: metadata
     )
 
     # Log the event (EventWriter will handle debug capture of processed event)

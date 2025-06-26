@@ -191,8 +191,11 @@ module EzlogsRubyAgent
       # Optional fields
       subject = event_hash['subject'] || event_hash[:subject]
       metadata = event_hash['metadata'] || event_hash[:metadata] || {}
-      timestamp = event_hash['timestamp'] || event_hash[:timestamp]
       correlation_id = event_hash['correlation_id'] || event_hash[:correlation_id]
+      timing = event_hash['timing'] || event_hash[:timing]
+      correlation_context = event_hash['correlation_context'] || event_hash[:correlation_context]
+      payload = event_hash['payload'] || event_hash[:payload]
+      event_id = event_hash['event_id'] || event_hash[:event_id]
 
       UniversalEvent.new(
         event_type: event_type,
@@ -200,8 +203,11 @@ module EzlogsRubyAgent
         actor: actor,
         subject: subject,
         metadata: metadata,
-        timestamp: timestamp,
-        correlation_id: correlation_id
+        correlation_id: correlation_id,
+        timing: timing,
+        correlation_context: correlation_context,
+        payload: payload,
+        event_id: event_id
       )
     end
 

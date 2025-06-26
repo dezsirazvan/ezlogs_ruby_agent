@@ -31,9 +31,9 @@ module EzlogsRubyAgent
     # Event type must follow namespace.category pattern
     EVENT_TYPE_PATTERN = /\A[a-z][a-z0-9]*\.[a-z][a-z0-9_]*\z/
 
-    attr_reader :event_id, :timestamp, :event_type, :action, :actor, :subject,
+    attr_reader :event_id, :event_type, :action, :actor, :subject,
                 :correlation_id, :correlation, :metadata, :platform, :validation_errors,
-                :correlation_context, :payload
+                :correlation_context, :payload, :timing
 
     # Create a new UniversalEvent with validation and automatic field generation
     #
@@ -42,17 +42,18 @@ module EzlogsRubyAgent
     # @param actor [Hash] Who performed the action with :type and :id keys
     # @param subject [Hash, nil] What was acted upon (optional)
     # @param metadata [Hash, nil] Additional event-specific data (optional)
-    # @param timestamp [Time, nil] When the event occurred (defaults to now)
+    # @param timing [Hash, nil] Timing data (optional, will be enhanced automatically)
     # @param correlation_id [String, nil] Correlation ID (auto-generated if not provided)
     # @param event_id [String, nil] Unique event ID (auto-generated if not provided)
     # @param correlation_context [Hash, nil] Correlation context (optional)
     # @param payload [Hash, nil] Payload data (optional)
+    # @param timing [Hash, nil] Timing data (optional, will be enhanced automatically)
     #
     # @raise [ArgumentError] If required keywords are missing
     # @raise [InvalidEventError] If validation fails
     def initialize(event_type:, action:, actor:, subject: nil, metadata: nil,
-                   timestamp: nil, correlation_id: nil, event_id: nil,
-                   correlation_context: nil, payload: nil)
+                   correlation_id: nil, event_id: nil,
+                   correlation_context: nil, payload: nil, timing: nil)
       @event_type = event_type
       @action = action
       @actor = deep_freeze(actor.frozen? ? safe_dup_hash(actor) : actor.dup)
@@ -68,7 +69,7 @@ module EzlogsRubyAgent
                   else
                     {}.freeze
                   end
-      @timestamp = timestamp || Time.now.utc
+      @event_created_at = Time.now.utc
       @event_id = event_id || generate_event_id
       @correlation_id = correlation_id || extract_correlation_id
       @correlation_context = correlation_context
@@ -80,9 +81,14 @@ module EzlogsRubyAgent
                  end
       @validation_errors = []
 
+      # ✅ CRITICAL FIX: Enhanced timing for ALL events
+      @timing = build_comprehensive_timing(timing)
+
       validate!
       build_correlation_context
       build_platform_context
+      build_environment_context
+      build_impact_classification
       freeze_self
     end
 
@@ -92,7 +98,6 @@ module EzlogsRubyAgent
     def to_h
       {
         event_id: @event_id,
-        timestamp: @timestamp,
         event_type: @event_type,
         action: @action,
         actor: @actor,
@@ -101,7 +106,10 @@ module EzlogsRubyAgent
         correlation_context: @correlation_context,
         payload: @payload,
         metadata: @metadata,
-        platform: @platform
+        timing: @timing,
+        platform: @platform,
+        environment: @environment,
+        impact: @impact
       }.compact
     end
 
@@ -114,6 +122,164 @@ module EzlogsRubyAgent
     end
 
     private
+
+    # ✅ CRITICAL FIX: Comprehensive timing for ALL events
+    def build_comprehensive_timing(provided_timing = nil)
+      event_creation_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      timing = {
+        event_created_at: @event_created_at.iso8601(3),
+        event_creation_time_ms: 0.0 # Will be calculated at end
+      }
+
+      # Merge provided timing data
+      timing.merge!(provided_timing) if provided_timing.is_a?(Hash)
+
+      # Extract comprehensive timing from thread context
+      if Thread.current[:ezlogs_timing_context]
+        timing_context = Thread.current[:ezlogs_timing_context]
+        timing.merge!(extract_timing_from_context(timing_context))
+      end
+
+      # Add operation-specific timing based on event type
+      case @event_type
+      when 'http.request'
+        timing.merge!(extract_http_timing)
+      when 'data.change'
+        timing.merge!(extract_data_change_timing)
+      when 'job.execution', 'sidekiq.job'
+        timing.merge!(extract_job_timing)
+      end
+
+      # Calculate event creation overhead
+      event_creation_end = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      timing[:event_creation_time_ms] = ((event_creation_end - event_creation_start) * 1000).round(6)
+
+      deep_freeze(timing)
+    end
+
+    def extract_timing_from_context(timing_context)
+      context_timing = {}
+
+      # Standard timing fields that should be present
+      if timing_context[:started_at] && timing_context[:completed_at]
+        start_time = timing_context[:started_at]
+        end_time = timing_context[:completed_at]
+
+        context_timing.merge!({
+          started_at: start_time.iso8601(3),
+          completed_at: end_time.iso8601(3),
+          total_duration_ms: ((end_time - start_time) * 1000).round(3)
+        })
+      end
+
+      # Extract performance metrics
+      if timing_context[:memory_before_mb] && timing_context[:memory_after_mb]
+        context_timing[:memory_allocated_mb] =
+          (timing_context[:memory_after_mb] - timing_context[:memory_before_mb]).round(3)
+        context_timing[:memory_peak_mb] = timing_context[:memory_peak_mb] if timing_context[:memory_peak_mb]
+      end
+
+      # Extract CPU and GC metrics
+      context_timing[:cpu_time_ms] = timing_context[:cpu_time_ms] if timing_context[:cpu_time_ms]
+      context_timing[:gc_count] = timing_context[:gc_count] if timing_context[:gc_count]
+      context_timing[:allocations] = timing_context[:allocations] if timing_context[:allocations]
+
+      context_timing
+    end
+
+    def extract_http_timing
+      http_timing = {}
+
+      # Queue time (time between request received and processing started)
+      if Thread.current[:ezlogs_request_received_at] && Thread.current[:ezlogs_request_start]
+        queue_time = Thread.current[:ezlogs_request_start] - Thread.current[:ezlogs_request_received_at]
+        http_timing[:queue_time_ms] = (queue_time * 1000).round(3)
+      end
+
+      # Middleware timing
+      if Thread.current[:ezlogs_middleware_duration]
+        http_timing[:middleware_time_ms] = Thread.current[:ezlogs_middleware_duration].round(3)
+      end
+
+      # Controller timing
+      if Thread.current[:ezlogs_controller_duration]
+        http_timing[:controller_time_ms] = Thread.current[:ezlogs_controller_duration].round(3)
+      end
+
+      # View rendering timing
+      if Thread.current[:ezlogs_view_duration]
+        http_timing[:view_time_ms] = Thread.current[:ezlogs_view_duration].round(3)
+      end
+
+      # Database timing
+      http_timing[:db_time_ms] = Thread.current[:ezlogs_db_duration].round(3) if Thread.current[:ezlogs_db_duration]
+
+      # Cache timing
+      if Thread.current[:ezlogs_cache_duration]
+        http_timing[:cache_time_ms] = Thread.current[:ezlogs_cache_duration].round(3)
+      end
+
+      # External API timing
+      if Thread.current[:ezlogs_external_api_duration]
+        http_timing[:external_api_time_ms] = Thread.current[:ezlogs_external_api_duration].round(3)
+      end
+
+      http_timing
+    end
+
+    def extract_data_change_timing
+      data_timing = {}
+
+      # Validation timing
+      if Thread.current[:ezlogs_validation_duration]
+        data_timing[:validation_time_ms] = Thread.current[:ezlogs_validation_duration].round(3)
+      end
+
+      # Callback timing
+      if Thread.current[:ezlogs_callback_duration]
+        data_timing[:callback_time_ms] = Thread.current[:ezlogs_callback_duration].round(3)
+      end
+
+      # Database operation timing
+      if Thread.current[:ezlogs_db_operation_duration]
+        data_timing[:database_time_ms] = Thread.current[:ezlogs_db_operation_duration].round(3)
+      end
+
+      # Index update timing
+      if Thread.current[:ezlogs_index_update_duration]
+        data_timing[:index_update_time_ms] = Thread.current[:ezlogs_index_update_duration].round(3)
+      end
+
+      data_timing
+    end
+
+    def extract_job_timing
+      job_timing = {}
+
+      # Queue wait time (time between enqueue and execution start)
+      if Thread.current[:ezlogs_job_enqueued_at] && Thread.current[:ezlogs_job_started_at]
+        wait_time = Thread.current[:ezlogs_job_started_at] - Thread.current[:ezlogs_job_enqueued_at]
+        job_timing[:queue_wait_time_ms] = (wait_time * 1000).round(3)
+      end
+
+      # Setup time (job initialization)
+      if Thread.current[:ezlogs_job_setup_duration]
+        job_timing[:setup_time_ms] = Thread.current[:ezlogs_job_setup_duration].round(3)
+      end
+
+      # Cleanup time
+      if Thread.current[:ezlogs_job_cleanup_duration]
+        job_timing[:cleanup_time_ms] = Thread.current[:ezlogs_job_cleanup_duration].round(3)
+      end
+
+      # Retry delay (if this was a retry)
+      if Thread.current[:ezlogs_job_retry_delay]
+        job_timing[:retry_delay_ms] = Thread.current[:ezlogs_job_retry_delay].round(3)
+      end
+
+      job_timing
+    end
 
     # Validate all aspects of the event
     def validate!
@@ -170,23 +336,32 @@ module EzlogsRubyAgent
       "evt_#{SecureRandom.urlsafe_base64(16).tr('_-', 'ab')}"
     end
 
-    # Extract correlation ID from thread context or generate new one
+    # ✅ CRITICAL FIX: Extract correlation ID with flow_id priority
     def extract_correlation_id
       context = Thread.current[:ezlogs_context]
+
+      # Priority 1: Use flow_id for correlation (CRITICAL FIX)
+      if context.respond_to?(:flow_id) && context.flow_id
+        return context.flow_id
+      elsif context.is_a?(Hash) && context[:flow_id]
+        return context[:flow_id]
+      end
+
+      # Priority 2: Use existing correlation_id
       if context.respond_to?(:correlation_id)
         return context.correlation_id
       elsif context.is_a?(Hash) && context.key?(:correlation_id)
         return context[:correlation_id]
       end
 
-      # Fallback to legacy thread variable
+      # Priority 3: Fallback to legacy thread variable
       return Thread.current[:correlation_id] if Thread.current[:correlation_id]
 
-      # Generate new correlation ID
+      # Priority 4: Generate new flow-based correlation ID
       "flow_#{SecureRandom.urlsafe_base64(16).tr('_-', 'cd')}"
     end
 
-    # Build correlation context with request/session information
+    # ✅ CRITICAL FIX: Build correlation context with proper flow_id usage
     def build_correlation_context
       context = Thread.current[:ezlogs_context]
       context_hash =
@@ -198,11 +373,16 @@ module EzlogsRubyAgent
           {}
         end
 
+      # Use flow_id as the primary correlation identifier
+      flow_id = context_hash[:flow_id] || @correlation_id
+
       @correlation = {
         correlation_id: @correlation_id,
-        flow_id: context_hash[:flow_id],
+        flow_id: flow_id,
         session_id: context_hash[:session_id],
         request_id: context_hash[:request_id],
+        transaction_id: context_hash[:transaction_id],
+        trace_id: context_hash[:trace_id],
         parent_event_id: context_hash[:parent_event_id]
       }.compact.freeze
     end
@@ -215,8 +395,112 @@ module EzlogsRubyAgent
         agent_version: EzlogsRubyAgent::VERSION,
         ruby_version: RUBY_VERSION,
         hostname: hostname,
+        process_id: Process.pid,
+        thread_id: Thread.current.object_id.to_s,
         source: build_detailed_source_info
       }.freeze
+    end
+
+    # ✅ NEW: Build environment context for better debugging
+    def build_environment_context
+      @environment = {
+        hostname: hostname,
+        process_id: Process.pid,
+        thread_id: Thread.current.object_id.to_s,
+        rails_env: extract_rails_env,
+        app_version: extract_app_version,
+        gem_version: EzlogsRubyAgent::VERSION,
+        ruby_engine: defined?(RUBY_ENGINE) ? RUBY_ENGINE : 'ruby',
+        ruby_platform: RUBY_PLATFORM
+      }.compact.freeze
+    end
+
+    # ✅ NEW: Build impact classification for business intelligence
+    def build_impact_classification
+      @impact = {
+        performance_tier: classify_performance_tier,
+        data_sensitivity: classify_data_sensitivity,
+        business_criticality: classify_business_criticality,
+        user_facing: determine_user_facing,
+        billable_operation: determine_billable_operation
+      }.compact.freeze
+    end
+
+    def classify_performance_tier
+      # Classify based on timing if available
+      total_duration = @timing[:total_duration_ms] || @timing[:execution_time_ms]
+      return 'unknown' unless total_duration
+
+      case total_duration
+      when 0..10 then 'fast'
+      when 10..100 then 'normal'
+      when 100..1000 then 'slow'
+      else 'critical'
+      end
+    end
+
+    def classify_data_sensitivity
+      case @event_type
+      when 'user.action', 'data.change'
+        # Check for sensitive fields in metadata
+        if @metadata.to_s.match?(/password|ssn|credit_card|email|phone/i)
+          'restricted'
+        else
+          'internal'
+        end
+      when 'http.request'
+        'public'
+      else
+        'internal'
+      end
+    end
+
+    def classify_business_criticality
+      case @event_type
+      when 'http.request'
+        # Check status codes in metadata
+        status = @metadata.dig(:response, :status) || @metadata[:status]
+        return 'critical' if status && status >= 500
+        return 'high' if status && status >= 400
+
+        'medium'
+      when 'data.change'
+        # Data changes are generally high criticality
+        'high'
+      when 'job.execution'
+        # Jobs are medium unless they fail
+        status = @metadata.dig(:outcome, :status) || @metadata[:status]
+        return 'critical' if status == 'failed'
+
+        'medium'
+      else
+        'low'
+      end
+    end
+
+    def determine_user_facing
+      case @event_type
+      when 'http.request' then true
+      when 'data.change'
+        # Check if this affects user-visible data
+        @metadata.to_s.match?(/profile|user|account|public/i)
+      else
+        false
+      end
+    end
+
+    def determine_billable_operation
+      # Determine if this operation should be counted for billing
+      case @event_type
+      when 'http.request'
+        # API calls are typically billable
+        @action.match?(/^(GET|POST|PUT|DELETE|PATCH)/i)
+      when 'data.change'
+        # Data modifications might be billable
+        @action.match? / (create | update | delete) / i
+      else
+        false
+      end
     end
 
     # Build detailed source information for precise event attribution
@@ -235,7 +519,30 @@ module EzlogsRubyAgent
     end
 
     def environment_name
-      EzlogsRubyAgent.config&.environment || 'unknown-environment'
+      EzlogsRubyAgent.config&.environment || extract_rails_env || 'unknown-environment'
+    end
+
+    def extract_rails_env
+      if defined?(Rails) && Rails.respond_to?(:env)
+        Rails.env
+      elsif ENV['RAILS_ENV']
+        ENV['RAILS_ENV']
+      elsif ENV['RACK_ENV']
+        ENV['RACK_ENV']
+      else
+        nil
+      end
+    end
+
+    def extract_app_version
+      # Try multiple ways to get app version
+      return Rails.application.config.version if defined?(Rails) && Rails.application&.config&.respond_to?(:version)
+      return ENV['APP_VERSION'] if ENV['APP_VERSION']
+      return File.read('VERSION').strip if File.exist?('VERSION')
+
+      nil
+    rescue StandardError
+      nil
     end
 
     def hostname
@@ -248,13 +555,12 @@ module EzlogsRubyAgent
       # Analyze the call stack to determine which collector created this event
       caller_lines = caller(1, 10)
 
-      return 'http_tracker' if caller_lines.any? { |line| line.include?('http_tracker.rb') }
-      return 'callbacks_tracker' if caller_lines.any? { |line| line.include?('callbacks_tracker.rb') }
-      return 'job_tracker' if caller_lines.any? { |line| line.include?('job_tracker.rb') }
-      return 'sidekiq_tracker' if caller_lines.any? { |line| line.include?('sidekiq_job_tracker.rb') }
-      return 'manual_logging' if caller_lines.any? { |line| line.include?('log_event') }
+      return 'http_tracker' if caller_lines.any? { |line| line.include?('http_tracker') }
+      return 'job_tracker' if caller_lines.any? { |line| line.include?('job_tracker') }
+      return 'callbacks_tracker' if caller_lines.any? { |line| line.include?('callbacks_tracker') }
+      return 'sidekiq_tracker' if caller_lines.any? { |line| line.include?('sidekiq') }
 
-      'unknown_collector'
+      'manual'
     end
 
     def extract_precise_location
@@ -333,7 +639,7 @@ module EzlogsRubyAgent
       when 'job_tracker', 'sidekiq_tracker'
         trigger_info[:type] = 'background_job'
         trigger_info[:source] = 'job_middleware'
-      when 'manual_logging'
+      when 'manual'
         trigger_info[:type] = 'manual'
         trigger_info[:source] = 'application_code'
       end
