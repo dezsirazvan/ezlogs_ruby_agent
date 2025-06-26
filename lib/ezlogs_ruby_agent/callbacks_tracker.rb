@@ -63,10 +63,13 @@ module EzlogsRubyAgent
       setup_data_change_timing_context(action, start_time)
 
       begin
+        # Safe extraction of model name
+        model_name = extract_safe_model_name
+
         # Create UniversalEvent with proper schema and correlation inheritance
         event = UniversalEvent.new(
           event_type: 'data.change',
-          action: "#{self.class.model_name.singular}.#{action}",
+          action: "#{model_name}.#{action}",
           actor: extract_actor,
           subject: extract_subject,
           metadata: build_enhanced_data_change_metadata(action, changes, previous_attributes, start_time),
@@ -79,10 +82,23 @@ module EzlogsRubyAgent
         EzlogsRubyAgent.writer.log(event)
       rescue StandardError => e
         warn "[Ezlogs] Failed to create callback event: #{e.message}"
+        warn "[Ezlogs] Callback error backtrace: #{e.backtrace.first(5).join("\n")}"
       ensure
         # Record completion timing
         Thread.current[:ezlogs_data_change_completed_at] = Time.now
       end
+    end
+
+    def extract_safe_model_name
+      if self.class.respond_to?(:model_name) && self.class.model_name.respond_to?(:singular)
+        return self.class.model_name.singular
+      end
+      return self.class.name.underscore if self.class.respond_to?(:name)
+
+      'unknown_model'
+    rescue StandardError => e
+      warn "[Ezlogs] Failed to extract model name: #{e.message}"
+      'unknown_model'
     end
 
     # ✅ NEW: Set up comprehensive timing context for data changes
@@ -144,9 +160,14 @@ module EzlogsRubyAgent
     def estimate_validation_time
       # Estimate based on model complexity and number of validations
       validation_count = begin
-        self.class.validators.length
-      rescue StandardError
-        3
+        if self.class.respond_to?(:validators)
+          self.class.validators.length
+        else
+          3 # Default estimate
+        end
+      rescue StandardError => e
+        warn "[Ezlogs] Failed to extract validation count: #{e.message}"
+        3 # Default estimate
       end
       (validation_count * 1.5).round(2)
     end
@@ -179,36 +200,52 @@ module EzlogsRubyAgent
                           before_create after_create before_update after_update
                           before_destroy after_destroy]
 
-      callback_types.sum { |cb_type|
-        begin
-          self.class._validators.count { |_, validators|
-            validators.any? { |v|
-              v.kind == cb_type
-            }
-          }
-        rescue StandardError
+      validator_count = callback_types.sum do |cb_type|
+        if self.class.respond_to?(:_validators)
+          self.class._validators.count do |_, validators|
+            validators.any? do |v|
+              v.respond_to?(:kind) && v.kind == cb_type
+            end
+          end
+        else
           0
         end
-      } +
-        callback_types.sum do |cb_type|
-          self.class.send("_#{cb_type}_callbacks").length
-        rescue StandardError
+      rescue StandardError => e
+        warn "[Ezlogs] Failed to count validators for #{cb_type}: #{e.message}"
+        0
+      end
+
+      callback_count = callback_types.sum do |cb_type|
+        callback_method = "_#{cb_type}_callbacks"
+        if self.class.respond_to?(callback_method)
+          self.class.send(callback_method).length
+        else
           0
         end
-    rescue StandardError
+      rescue StandardError => e
+        warn "[Ezlogs] Failed to count callbacks for #{cb_type}: #{e.message}"
+        0
+      end
+
+      validator_count + callback_count
+    rescue StandardError => e
+      warn "[Ezlogs] Failed to count model callbacks: #{e.message}"
       5 # Default estimate
     end
 
     def count_indexed_attributes
       # Count database indexes for this model
-      if defined?(ActiveRecord) && self.class.respond_to?(:connection)
-        indexes = self.class.connection.indexes(self.class.table_name)
+
+      if defined?(ActiveRecord) && self.class.respond_to?(:connection) && self.class.respond_to?(:table_name)
+        table_name = self.class.table_name
+        indexes = self.class.connection.indexes(table_name)
         indexes.length
       else
         3 # Default estimate
       end
-    rescue StandardError
-      3
+    rescue StandardError => e
+      warn "[Ezlogs] Failed to count indexed attributes: #{e.message}"
+      3 # Default estimate
     end
 
     def get_current_memory_usage
@@ -224,27 +261,48 @@ module EzlogsRubyAgent
     # ✅ ENHANCED: Build comprehensive data change metadata
     def build_enhanced_data_change_metadata(action, changes, previous_attributes, start_time)
       metadata = {
-        # ✅ DATA INTELLIGENCE: Smart field analysis
-        data_impact: build_data_impact_analysis(changes),
-
-        # ✅ BUSINESS LOGIC TRACKING: Workflow and status changes
-        business_impact: build_business_impact_analysis(action, changes),
-
-        # ✅ VALIDATION & ERRORS: Comprehensive validation tracking
-        validation: build_validation_analysis,
-
-        # ✅ RELATED DATA CHANGES: Cascade operations and side effects
-        cascade_operations: build_cascade_operations_analysis(action),
-
         # Enhanced existing metadata
         action: action,
         model: self.class.name,
-        table: (self.class.respond_to?(:table_name) ? self.class.table_name : self.class.name.tableize),
+        table: extract_safe_table_name,
         changes: sanitize_changes_deeply(changes),
         previous_attributes: sanitize_changes_deeply(previous_attributes),
-        record_id: respond_to?(:id) ? id.to_s : nil,
+        record_id: if respond_to?(:id)
+                     id.nil? ? nil : id.to_s
+                   else
+                     nil
+                   end,
         transaction_context: extract_transaction_context
       }
+
+      # Safe execution of complex analysis methods
+      begin
+        metadata[:data_impact] = build_data_impact_analysis(changes)
+      rescue StandardError => e
+        warn "[Ezlogs] Failed to build data impact analysis: #{e.message}"
+        metadata[:data_impact] = {}
+      end
+
+      begin
+        metadata[:business_impact] = build_business_impact_analysis(action, changes)
+      rescue StandardError => e
+        warn "[Ezlogs] Failed to build business impact analysis: #{e.message}"
+        metadata[:business_impact] = {}
+      end
+
+      begin
+        metadata[:validation] = build_validation_analysis
+      rescue StandardError => e
+        warn "[Ezlogs] Failed to build validation analysis: #{e.message}"
+        metadata[:validation] = {}
+      end
+
+      begin
+        metadata[:cascade_operations] = build_cascade_operations_analysis(action)
+      rescue StandardError => e
+        warn "[Ezlogs] Failed to build cascade operations analysis: #{e.message}"
+        metadata[:cascade_operations] = {}
+      end
 
       metadata.compact
     end
@@ -493,33 +551,39 @@ module EzlogsRubyAgent
     def count_dependent_destroys(action)
       return 0 unless action == 'destroy'
 
-      # Count associations with dependent: :destroy
-      if self.class.respond_to?(:reflect_on_all_associations)
-        destroy_associations = self.class.reflect_on_all_associations.select do |assoc|
-          assoc.options[:dependent] == :destroy
+      begin
+        # Count associations with dependent: :destroy
+        if self.class.respond_to?(:reflect_on_all_associations)
+          destroy_associations = self.class.reflect_on_all_associations.select do |assoc|
+            assoc.respond_to?(:options) && assoc.options[:dependent] == :destroy
+          end
+          destroy_associations.length
+        else
+          0
         end
-        destroy_associations.length
-      else
+      rescue StandardError => e
+        warn "[Ezlogs] Failed to count dependent destroys: #{e.message}"
         0
       end
-    rescue StandardError
-      0
     end
 
     def count_dependent_nullifies(action)
       return 0 unless action == 'destroy'
 
-      # Count associations with dependent: :nullify
-      if self.class.respond_to?(:reflect_on_all_associations)
-        nullify_associations = self.class.reflect_on_all_associations.select do |assoc|
-          assoc.options[:dependent] == :nullify
+      begin
+        # Count associations with dependent: :nullify
+        if self.class.respond_to?(:reflect_on_all_associations)
+          nullify_associations = self.class.reflect_on_all_associations.select do |assoc|
+            assoc.respond_to?(:options) && assoc.options[:dependent] == :nullify
+          end
+          nullify_associations.length
+        else
+          0
         end
-        nullify_associations.length
-      else
+      rescue StandardError => e
+        warn "[Ezlogs] Failed to count dependent nullifies: #{e.message}"
         0
       end
-    rescue StandardError
-      0
     end
 
     def extract_touch_operations
@@ -563,13 +627,19 @@ module EzlogsRubyAgent
 
     def extract_search_index_updates
       # Predict search index updates based on searchable fields
-      searchable_fields = classify_searchable_fields(attributes.keys)
+
+      attr_keys = respond_to?(:attributes) ? attributes.keys.map(&:to_s) : []
+      searchable_fields = classify_searchable_fields(attr_keys)
 
       if searchable_fields.any?
-        ["#{self.class.name.underscore}_search_document"]
+        model_name = self.class.respond_to?(:name) ? self.class.name.underscore : 'unknown'
+        ["#{model_name}_search_document"]
       else
         []
       end
+    rescue StandardError => e
+      warn "[Ezlogs] Failed to extract search index updates: #{e.message}"
+      []
     end
 
     def extract_transaction_context
@@ -626,10 +696,24 @@ module EzlogsRubyAgent
 
     def extract_subject
       {
-        type: self.class.model_name.singular,
-        id: respond_to?(:id) ? id.to_s : nil,
-        table: self.class.table_name
+        type: extract_safe_model_name,
+        id: if respond_to?(:id)
+              id.nil? ? nil : id.to_s
+            else
+              nil
+            end,
+        table: extract_safe_table_name
       }.compact
+    end
+
+    def extract_safe_table_name
+      return self.class.table_name if self.class.respond_to?(:table_name)
+      return self.class.name.underscore.pluralize if self.class.respond_to?(:name)
+
+      'unknown_table'
+    rescue StandardError => e
+      warn "[Ezlogs] Failed to extract table name: #{e.message}"
+      'unknown_table'
     end
 
     def build_change_metadata(action, changes, previous_attributes)

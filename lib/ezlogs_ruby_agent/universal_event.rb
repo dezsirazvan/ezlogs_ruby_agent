@@ -497,7 +497,7 @@ module EzlogsRubyAgent
         @action.match?(/^(GET|POST|PUT|DELETE|PATCH)/i)
       when 'data.change'
         # Data modifications might be billable
-        @action.match? / (create | update | delete) / i
+        @action.match?(/(create|update|delete)/i)
       else
         false
       end
