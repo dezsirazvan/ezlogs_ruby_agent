@@ -91,7 +91,7 @@ module EzlogsRubyAgent
         record_metric(:events_received, 1)
         if EzlogsRubyAgent.debug_mode && processed_event.is_a?(Hash) && processed_event[:event_type] && processed_event[:action]
           # Capture the processed event (with sanitization applied) for debugging
-          DebugTools.capture_event(OpenStruct.new(to_h: processed_event))
+          DebugTools.capture_event(OpenStruct.new(processed_event))
         end
       else
         # Event was filtered out by sampling or invalid
