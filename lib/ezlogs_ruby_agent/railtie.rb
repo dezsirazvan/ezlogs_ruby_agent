@@ -42,21 +42,21 @@ module EzlogsRubyAgent
 
     # Configure Sidekiq integration if available
     initializer "ezlogs_ruby_agent.configure_sidekiq" do
-      if EzlogsRubyAgent.config.instrumentation.sidekiq && sidekiq_available?
-        configure_sidekiq_server
-        configure_sidekiq_client
+      if EzlogsRubyAgent.config.instrumentation.sidekiq && self.sidekiq_available?
+        self.configure_sidekiq_server
+        self.configure_sidekiq_client
       end
     end
 
     # Configure job adapter detection
     initializer "ezlogs_ruby_agent.configure_jobs" do
-      EzlogsRubyAgent.config.job_adapter = detect_job_adapter
+      EzlogsRubyAgent.config.job_adapter = self.detect_job_adapter
     end
 
     # Validate configuration after Rails is fully loaded
     # :nocov:
     config.after_initialize do
-      validate_configuration
+      self.validate_configuration
     end
     # :nocov:
 
