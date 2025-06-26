@@ -215,6 +215,20 @@ module EzlogsRubyAgent
       }
     end
 
+    def service_name
+      EzlogsRubyAgent.config&.service_name || 'unknown-service'
+    end
+
+    def environment_name
+      EzlogsRubyAgent.config&.environment || 'unknown-environment'
+    end
+
+    def hostname
+      Socket.gethostname
+    rescue StandardError
+      'unknown-hostname'
+    end
+
     def determine_collector_type
       # Analyze the call stack to determine which collector created this event
       caller_lines = caller(1, 10)

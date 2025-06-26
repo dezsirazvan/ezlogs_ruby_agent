@@ -512,13 +512,13 @@ module EzlogsRubyAgent
       # Get sensitive field patterns
       all_sensitive_fields = %w[password passwd pwd secret token api_key access_key credit_card cc_number card_number
                                 ssn social_security auth_token session_id cookie] +
-                             (config.sanitize_fields || [])
+                             (config.security&.sensitive_fields || [])
 
       sanitized_params = deep_dup(params)
       sanitize_hash_recursive!(sanitized_params, all_sensitive_fields, sanitized_fields)
 
       # Apply PII detection if enabled
-      detect_pii_recursive!(sanitized_params, sanitized_fields) if config.auto_detect_pii
+      detect_pii_recursive!(sanitized_params, sanitized_fields) if config.security&.auto_detect_pii
 
       sanitized_params
     end
