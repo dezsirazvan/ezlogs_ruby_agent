@@ -28,7 +28,17 @@ module EzlogsRubyAgent
         @request_id = request_id
         @parent_event_id = parent_event_id
         @started_at = started_at || Time.now.utc
-        @metadata = metadata.dup
+
+        # Safely handle metadata that might be frozen
+        @metadata = if metadata.is_a?(Hash)
+                      if metadata.frozen?
+                        deep_dup_metadata(metadata)
+                      else
+                        metadata.dup
+                      end
+                    else
+                      {}
+                    end
         freeze
       end
 
@@ -47,13 +57,23 @@ module EzlogsRubyAgent
       def merge(other_context)
         return self unless other_context
 
+        # Safely merge metadata, handling frozen hashes
+        merged_metadata = begin
+          @metadata.merge(other_context.metadata)
+        rescue StandardError
+          # If merge fails due to frozen hashes, deep duplicate and merge
+          safe_metadata = @metadata.frozen? ? deep_dup_metadata(@metadata) : @metadata.dup
+          other_metadata = other_context.metadata.frozen? ? deep_dup_metadata(other_context.metadata) : other_context.metadata
+          safe_metadata.merge(other_metadata)
+        end
+
         Context.new(
           correlation_id: @correlation_id,
           flow_id: @flow_id,
           session_id: @session_id || other_context.session_id,
           request_id: @request_id || other_context.request_id,
           parent_event_id: @parent_event_id || other_context.parent_event_id,
-          metadata: @metadata.merge(other_context.metadata)
+          metadata: merged_metadata
         )
       end
 
@@ -65,6 +85,31 @@ module EzlogsRubyAgent
 
       def generate_flow_id
         "flow_#{SecureRandom.urlsafe_base64(16).tr('_-', 'cd')}"
+      end
+
+      # Helper method to safely deep duplicate frozen metadata
+      def deep_dup_metadata(metadata)
+        return {} unless metadata.is_a?(Hash)
+
+        unfrozen = {}
+        metadata.each do |key, value|
+          new_key = key.respond_to?(:dup) && !key.is_a?(Symbol) ? key.dup : key
+          new_value = case value
+                      when Hash
+                        deep_dup_metadata(value)
+                      when Array
+                        value.map { |item| item.is_a?(Hash) ? deep_dup_metadata(item) : item }
+                      else
+                        value.respond_to?(:dup) && !value.is_a?(Symbol) && !value.is_a?(Numeric) && !value.nil? ? value.dup : value
+                      end
+          unfrozen[new_key] = new_value
+        rescue StandardError
+          # If we can't duplicate, just use the original value
+          unfrozen[key] = value
+        end
+        unfrozen
+      rescue StandardError
+        {}
       end
     end
 
@@ -244,9 +289,13 @@ module EzlogsRubyAgent
       def restore_context(correlation_data)
         return nil unless correlation_data.is_a?(Hash)
 
-        # Create unfrozen copy of metadata to avoid FrozenError in application code
-        unfrozen_data = correlation_data.dup
-        unfrozen_data[:metadata] = deep_dup(unfrozen_data[:metadata]) if unfrozen_data[:metadata].is_a?(Hash)
+        # Create completely unfrozen copy to avoid FrozenError
+        unfrozen_data = deep_dup(correlation_data)
+
+        # Ensure all hash keys and values are unfrozen
+        unfrozen_data.each do |key, value|
+          unfrozen_data[key] = deep_dup(value) if value.frozen? && (value.is_a?(Hash) || value.is_a?(Array))
+        end
 
         context = Context.new(**unfrozen_data)
         set_context(context)
@@ -260,18 +309,61 @@ module EzlogsRubyAgent
       def deep_dup(obj)
         case obj
         when Hash
-          obj.each_with_object({}) { |(key, value), new_hash| new_hash[key] = deep_dup(value) }
+          obj.each_with_object({}) do |(key, value), new_hash|
+            new_key = key.frozen? && key.respond_to?(:dup) ? key.dup : key
+            new_hash[new_key] = deep_dup(value)
+          end
         when Array
           obj.map { |item| deep_dup(item) }
         else
-          obj.duplicable? ? obj.dup : obj
+          if obj.respond_to?(:duplicable?) && obj.duplicable?
+            obj.dup
+          elsif obj.respond_to?(:dup) && !obj.frozen?
+            obj.dup
+          elsif obj.respond_to?(:dup)
+            begin
+              obj.dup
+            rescue StandardError
+              obj
+            end
+          else
+            obj
+          end
         end
+      rescue StandardError
+        # Fallback to original object if duplication fails
+        obj
       end
 
       private
 
       def set_context(context)
         Thread.current[CONTEXT_KEY] = context
+      end
+
+      # Helper method to safely deep duplicate frozen metadata (class method version)
+      def deep_dup_metadata(metadata)
+        return {} unless metadata.is_a?(Hash)
+
+        unfrozen = {}
+        metadata.each do |key, value|
+          new_key = key.respond_to?(:dup) && !key.is_a?(Symbol) ? key.dup : key
+          new_value = case value
+                      when Hash
+                        deep_dup_metadata(value)
+                      when Array
+                        value.map { |item| item.is_a?(Hash) ? deep_dup_metadata(item) : item }
+                      else
+                        value.respond_to?(:dup) && !value.is_a?(Symbol) && !value.is_a?(Numeric) && !value.nil? ? value.dup : value
+                      end
+          unfrozen[new_key] = new_value
+        rescue StandardError
+          # If we can't duplicate, just use the original value
+          unfrozen[key] = value
+        end
+        unfrozen
+      rescue StandardError
+        {}
       end
     end
   end

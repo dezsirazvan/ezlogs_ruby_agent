@@ -55,14 +55,29 @@ module EzlogsRubyAgent
                    correlation_context: nil, payload: nil)
       @event_type = event_type
       @action = action
-      @actor = deep_freeze(actor.dup)
-      @subject = subject ? deep_freeze(subject.dup) : nil
-      @metadata = metadata ? deep_freeze(metadata.dup) : {}.freeze
+      @actor = deep_freeze(actor.frozen? ? safe_dup_hash(actor) : actor.dup)
+      @subject = if subject
+                   safe_subject = subject.frozen? ? safe_dup_hash(subject) : subject.dup
+                   deep_freeze(safe_subject)
+                 else
+                   nil
+                 end
+      @metadata = if metadata
+                    safe_metadata = metadata.frozen? ? safe_dup_hash(metadata) : metadata.dup
+                    deep_freeze(safe_metadata)
+                  else
+                    {}.freeze
+                  end
       @timestamp = timestamp || Time.now.utc
       @event_id = event_id || generate_event_id
       @correlation_id = correlation_id || extract_correlation_id
       @correlation_context = correlation_context
-      @payload = payload ? deep_freeze(payload.dup) : nil
+      @payload = if payload
+                   safe_payload = payload.frozen? ? safe_dup_hash(payload) : payload.dup
+                   deep_freeze(safe_payload)
+                 else
+                   nil
+                 end
       @validation_errors = []
 
       validate!
@@ -362,6 +377,31 @@ module EzlogsRubyAgent
       end
 
       Dir.pwd # Fallback to current directory
+    end
+
+    # Safely duplicate a hash that might be frozen
+    def safe_dup_hash(hash)
+      return {} unless hash.is_a?(Hash)
+
+      unfrozen = {}
+      hash.each do |key, value|
+        new_key = key.respond_to?(:dup) && !key.is_a?(Symbol) ? key.dup : key
+        new_value = case value
+                    when Hash
+                      safe_dup_hash(value)
+                    when Array
+                      value.map { |item| item.is_a?(Hash) ? safe_dup_hash(item) : item }
+                    else
+                      value.respond_to?(:dup) && !value.is_a?(Symbol) && !value.is_a?(Numeric) && !value.nil? ? value.dup : value
+                    end
+        unfrozen[new_key] = new_value
+      rescue StandardError
+        # If we can't duplicate, just use the original value
+        unfrozen[key] = value
+      end
+      unfrozen
+    rescue StandardError
+      {}
     end
 
     # Recursively freeze nested hashes and arrays
