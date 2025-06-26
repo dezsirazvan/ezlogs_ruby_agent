@@ -133,7 +133,7 @@ module EzlogsRubyAgent
         type: 'graphql',
         id: operation_name,
         operation: query_type,
-        query: body['query']&.truncate(100)
+        query: truncate_string(body['query'], 100)
       }
     end
 
@@ -201,10 +201,10 @@ module EzlogsRubyAgent
           error_data = JSON.parse(body)
           error_data['error'] || error_data['message'] || 'Unknown error'
         rescue JSON::ParserError
-          body.to_s.truncate(200)
+          truncate_string(body.to_s, 200)
         end
       elsif response.is_a?(String)
-        response.truncate(200)
+        truncate_string(response, 200)
       else
         'Unknown error'
       end
@@ -311,6 +311,13 @@ module EzlogsRubyAgent
 
     def generate_request_id
       "req_#{SecureRandom.urlsafe_base64(16).tr('_-', 'ef')}"
+    end
+
+    def truncate_string(str, length)
+      return nil if str.nil?
+      return str if str.length <= length
+
+      "#{str[0..length - 4]}..."
     end
 
     def trackable_request?(env)

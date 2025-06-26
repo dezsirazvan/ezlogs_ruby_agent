@@ -44,21 +44,32 @@ module EzlogsRubyAgent
     end
 
     def log_event(action, changes, previous_attributes = nil)
-      # Create UniversalEvent with proper schema and correlation inheritance
-      event = UniversalEvent.new(
-        event_type: 'data.change',
-        action: "#{self.class.model_name.singular}.#{action}",
-        actor: extract_actor,
-        subject: extract_subject,
-        metadata: build_change_metadata(action, changes, previous_attributes),
-        timestamp: Time.now,
-        correlation_id: EzlogsRubyAgent::CorrelationManager.current_context&.correlation_id
-      )
+      puts "[CallbacksTracker] Creating event for #{self.class.name}##{action}"
+      puts "[CallbacksTracker] Changes: #{changes.inspect}"
 
-      # Log the event
-      EzlogsRubyAgent.writer.log(event)
-    rescue StandardError => e
-      warn "[Ezlogs] Failed to create callback event: #{e.message}"
+      begin
+        # Create UniversalEvent with proper schema and correlation inheritance
+        event = UniversalEvent.new(
+          event_type: 'data.change',
+          action: "#{self.class.model_name.singular}.#{action}",
+          actor: extract_actor,
+          subject: extract_subject,
+          metadata: build_change_metadata(action, changes, previous_attributes),
+          timestamp: Time.now,
+          correlation_id: EzlogsRubyAgent::CorrelationManager.current_context&.correlation_id
+        )
+
+        puts "[CallbacksTracker] Event created: #{event.inspect}"
+
+        # Log the event
+        EzlogsRubyAgent.writer.log(event)
+
+        puts "[CallbacksTracker] Event logged successfully"
+      rescue StandardError => e
+        puts "[CallbacksTracker] Failed to create callback event: #{e.message}"
+        puts e.backtrace.join("\n")
+        warn "[Ezlogs] Failed to create callback event: #{e.message}"
+      end
     end
 
     def extract_actor
