@@ -1,4 +1,6 @@
 require 'active_support/concern'
+require 'securerandom'
+require 'socket'
 require 'ezlogs_ruby_agent/event_writer'
 require 'ezlogs_ruby_agent/actor_extractor'
 require 'ezlogs_ruby_agent/universal_event'
@@ -74,14 +76,20 @@ module EzlogsRubyAgent
     end
 
     def build_change_metadata(action, changes, previous_attributes)
+      # Get current HTTP context if available
+      current_context = EzlogsRubyAgent::CorrelationManager.current_context
+
       metadata = {
-        model: self.class.name,
-        table: self.class.model_name.plural,
-        record_id: id,
-        action: action,
-        changes: changes,
-        previous: previous_attributes,
-        user_id: respond_to?(:user_id) ? user_id : nil
+        model: {
+          class: self.class.name,
+          table: self.class.table_name,
+          primary_key: self.class.primary_key || 'id',
+          record_id: id&.to_s
+        },
+        operation: action,
+        changes: build_enhanced_changes(changes),
+        trigger: extract_trigger_context,
+        context: extract_session_context(current_context)
       }
 
       # Add validation errors if present
@@ -95,57 +103,214 @@ module EzlogsRubyAgent
         metadata[:bulk_size] = respond_to?(:bulk_size) ? bulk_size : nil
       end
 
+      # Add transaction context
+      metadata[:transaction_id] = extract_transaction_id
+
       metadata.compact
     end
 
-    def sanitize_changes(changes)
+    def build_enhanced_changes(changes)
       return {} unless changes.is_a?(Hash)
 
-      sensitive_fields = EzlogsRubyAgent.config.security.sensitive_fields
+      enhanced_changes = {}
+      sensitive_fields = EzlogsRubyAgent.config.security&.sensitive_fields || []
 
-      changes.transform_values do |change|
-        if change.is_a?(Array) && change.size == 2
-          # Handle before/after changes
-          [
-            sanitize_value(change[0], sensitive_fields),
-            sanitize_value(change[1], sensitive_fields)
-          ]
+      changes.each do |field_name, change_data|
+        field_str = field_name.to_s
+
+        # Determine if field is sensitive
+        is_sensitive = sensitive_fields.any? { |sf| field_str.downcase.include?(sf.downcase) } ||
+                       contains_pii?(change_data)
+
+        if change_data.is_a?(Array) && change_data.size == 2
+          # Standard Rails change format [from, to]
+          from_value, to_value = change_data
+
+          enhanced_changes[field_name] = {
+            from: is_sensitive ? '[REDACTED]' : from_value,
+            to: is_sensitive ? '[REDACTED]' : to_value,
+            data_type: detect_data_type(to_value),
+            sensitive: is_sensitive
+          }
         else
-          sanitize_value(change, sensitive_fields)
+          # Single value change (create/destroy)
+          enhanced_changes[field_name] = {
+            value: is_sensitive ? '[REDACTED]' : change_data,
+            data_type: detect_data_type(change_data),
+            sensitive: is_sensitive
+          }
         end
       end
+
+      enhanced_changes
     end
 
-    def sanitize_attributes(attributes)
-      return {} unless attributes.is_a?(Hash)
+    def extract_trigger_context
+      # Try to extract the current controller/action context
+      if defined?(Rails) && Rails.application
+        controller_info = extract_controller_context
+        return controller_info if controller_info
+      end
 
-      sensitive_fields = EzlogsRubyAgent.config.security.sensitive_fields
+      # Fallback to call stack analysis
+      caller_info = extract_caller_context
 
-      attributes.transform_values do |value|
-        sanitize_value(value, sensitive_fields)
+      {
+        type: 'callback',
+        hook: extract_callback_type,
+        source: caller_info
+      }.compact
+    end
+
+    def extract_controller_context
+      # Try to get current controller from thread or request context
+      current_thread = Thread.current
+
+      # Check for Rails controller in thread
+      if current_thread[:current_controller]
+        controller = current_thread[:current_controller]
+        return {
+          type: 'http_request',
+          controller: controller.class.name,
+          action: controller.action_name,
+          method: controller.request.method,
+          endpoint: "#{controller.request.method} #{controller.request.path}"
+        }
+      end
+
+      # Check correlation context for HTTP info
+      current_context = EzlogsRubyAgent::CorrelationManager.current_context
+      if current_context&.request_id
+        return {
+          type: 'http_request',
+          request_id: current_context.request_id,
+          session_id: current_context.session_id
+        }
+      end
+
+      nil
+    end
+
+    def extract_caller_context
+      # Analyze call stack to identify the source
+      relevant_caller = caller.find { |line| line.include?('app/') && !line.include?('ezlogs') }
+
+      # Parse caller line: /path/file.rb:line:in `method'
+      if relevant_caller && relevant_caller.match(%r{([^/]+\.rb):(\d+):in `([^']+)'})
+        return {
+          file: ::Regexp.last_match(1),
+          line: ::Regexp.last_match(2).to_i,
+          method: ::Regexp.last_match(3)
+        }
+      end
+
+      nil
+    end
+
+    def extract_callback_type
+      # Determine which callback triggered this event
+      case caller.find { |line| line.include?('log_') }&.match(/log_(\w+)_event/)&.[](1)
+      when 'create'
+        'after_create'
+      when 'update'
+        'after_update'
+      when 'destroy'
+        'after_destroy'
+      else
+        'unknown'
       end
     end
 
-    def sanitize_value(value, sensitive_fields)
-      return value unless value.is_a?(String)
+    def extract_session_context(current_context)
+      context = {}
 
-      # Check if this field should be sanitized based on common patterns
-      field_name = caller_locations(1, 1)[0].label
-      should_sanitize = sensitive_fields.any? { |field| field_name.downcase.include?(field.downcase) }
+      # Extract from correlation context
+      if current_context
+        context[:request_id] = current_context.request_id if current_context.request_id
+        context[:session_id] = current_context.session_id if current_context.session_id
+        context[:correlation_id] = current_context.correlation_id if current_context.correlation_id
+      end
 
-      # Also check the value itself for sensitive patterns
-      sensitive_patterns = [
-        /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/, # email
+      # Extract user context if available
+      context[:user_id] = user_id if respond_to?(:user_id) && user_id
+
+      # Extract environment info
+      context[:environment] = {
+        rails_env: defined?(Rails) ? Rails.env : ENV['RACK_ENV'] || ENV['RAILS_ENV'],
+        app_version: extract_app_version,
+        gem_version: EzlogsRubyAgent::VERSION
+      }.compact
+
+      # Extract IP address if available from current thread
+      context[:ip_address] = Thread.current[:current_request_ip] if Thread.current[:current_request_ip]
+
+      # Extract user agent if available
+      context[:user_agent] = Thread.current[:current_user_agent] if Thread.current[:current_user_agent]
+
+      context.compact
+    end
+
+    def detect_data_type(value)
+      case value
+      when String
+        'string'
+      when Integer
+        'integer'
+      when Float
+        'float'
+      when TrueClass, FalseClass
+        'boolean'
+      when Time, DateTime, Date
+        'datetime'
+      when NilClass
+        'null'
+      when Hash
+        'hash'
+      when Array
+        'array'
+      else
+        'unknown'
+      end
+    end
+
+    def contains_pii?(value)
+      return false unless value.is_a?(String) || (value.is_a?(Array) && value.any? { |v| v.is_a?(String) })
+
+      # Common PII patterns
+      pii_patterns = [
+        /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/, # email
         /\b(?:\d{4}[-\s]?){3}\d{4}\b/, # credit card
         /\b\d{3}-?\d{2}-?\d{4}\b/, # SSN
-        /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/ # email pattern
+        /\b\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})\b/ # phone
       ]
 
-      if should_sanitize || sensitive_patterns.any? { |pattern| value.match?(pattern) }
-        '[REDACTED]'
-      else
-        value
+      values_to_check = value.is_a?(Array) ? value.select { |v| v.is_a?(String) } : [value]
+
+      values_to_check.any? do |str|
+        pii_patterns.any? { |pattern| str.match?(pattern) }
       end
+    end
+
+    def extract_app_version
+      # Try multiple ways to get app version
+      return Rails.application.config.version if defined?(Rails) && Rails.application&.config&.respond_to?(:version)
+      return ENV['APP_VERSION'] if ENV['APP_VERSION']
+
+      # Try to read from VERSION file
+      version_file = File.join(Dir.pwd, 'VERSION')
+      return File.read(version_file).strip if File.exist?(version_file)
+
+      # Try to read from Gemfile.lock for app version
+      gemfile_lock = File.join(Dir.pwd, 'Gemfile.lock')
+      if File.exist?(gemfile_lock)
+        content = File.read(gemfile_lock)
+        # Look for Rails version as proxy
+        return "rails-#{::Regexp.last_match(1)}" if content.match(/rails \(([^)]+)\)/)
+      end
+
+      'unknown'
+    rescue StandardError
+      'unknown'
     end
 
     def extract_transaction_id

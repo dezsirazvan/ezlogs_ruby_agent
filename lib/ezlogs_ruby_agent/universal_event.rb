@@ -192,25 +192,162 @@ module EzlogsRubyAgent
       }.compact.freeze
     end
 
-    # Build platform context with service and environment information
+    # Build platform context with detailed source information
     def build_platform_context
-      config = EzlogsRubyAgent.config
-
       @platform = {
-        service: config.service_name || 'ruby-app',
-        environment: config.environment || Rails.env || ENV['RACK_ENV'] || 'development',
+        service: service_name,
+        environment: environment_name,
         agent_version: EzlogsRubyAgent::VERSION,
         ruby_version: RUBY_VERSION,
-        hostname: Socket.gethostname
+        hostname: hostname,
+        source: build_detailed_source_info
       }.freeze
-    rescue StandardError
-      # Fallback if any platform detection fails
-      @platform = {
-        service: 'ruby-app',
-        environment: 'unknown',
-        agent_version: EzlogsRubyAgent::VERSION,
-        ruby_version: RUBY_VERSION
-      }.freeze
+    end
+
+    # Build detailed source information for precise event attribution
+    def build_detailed_source_info
+      {
+        gem: 'ezlogs_ruby_agent',
+        version: EzlogsRubyAgent::VERSION,
+        collector: determine_collector_type,
+        location: extract_precise_location,
+        trigger: extract_trigger_information
+      }
+    end
+
+    def determine_collector_type
+      # Analyze the call stack to determine which collector created this event
+      caller_lines = caller(1, 10)
+
+      return 'http_tracker' if caller_lines.any? { |line| line.include?('http_tracker.rb') }
+      return 'callbacks_tracker' if caller_lines.any? { |line| line.include?('callbacks_tracker.rb') }
+      return 'job_tracker' if caller_lines.any? { |line| line.include?('job_tracker.rb') }
+      return 'sidekiq_tracker' if caller_lines.any? { |line| line.include?('sidekiq_job_tracker.rb') }
+      return 'manual_logging' if caller_lines.any? { |line| line.include?('log_event') }
+
+      'unknown_collector'
+    end
+
+    def extract_precise_location
+      # Find the first call stack entry that's in the application code
+      caller_lines = caller(1, 20)
+
+      app_caller = caller_lines.find do |line|
+        line.include?('app/') &&
+          !line.include?('ezlogs') &&
+          !line.include?('vendor/') &&
+          !line.include?('gems/')
+      end
+
+      return parse_caller_location(app_caller) if app_caller
+
+      # Fallback to the first non-gem caller
+      non_gem_caller = caller_lines.find do |line|
+        !line.include?('gems/') &&
+          !line.include?('vendor/') &&
+          !line.include?('ezlogs')
+      end
+
+      return parse_caller_location(non_gem_caller) if non_gem_caller
+
+      # Last resort: just take the immediate caller
+      parse_caller_location(caller_lines.first)
+    end
+
+    def parse_caller_location(caller_line)
+      return {} unless caller_line
+
+      # Parse caller format: /path/file.rb:line:in `method'
+      if caller_line.match(%r{([^/]+\.rb):(\d+):in `([^']+)'})
+        file_name = ::Regexp.last_match(1)
+        line_number = ::Regexp.last_match(2).to_i
+        method_name = ::Regexp.last_match(3)
+
+        {
+          file: file_name,
+          line: line_number,
+          method: method_name,
+          full_path: extract_full_path_from_caller(caller_line)
+        }
+      else
+        { raw_caller: caller_line }
+      end
+    end
+
+    def extract_full_path_from_caller(caller_line)
+      # Extract the full file path from the caller string
+      if caller_line.match(/^([^:]+):/)
+        full_path = ::Regexp.last_match(1)
+
+        # Try to make it relative to the project root
+        project_root = find_project_root
+        if project_root && full_path.start_with?(project_root)
+          return full_path[project_root.length + 1..-1] # +1 to remove leading slash
+        end
+
+        full_path
+      else
+        nil
+      end
+    end
+
+    def extract_trigger_information
+      trigger_info = {}
+
+      # Determine the type of trigger based on the collector
+      case determine_collector_type
+      when 'http_tracker'
+        trigger_info[:type] = 'http_request'
+        trigger_info[:source] = 'rack_middleware'
+      when 'callbacks_tracker'
+        trigger_info.merge!(extract_activerecord_trigger_info)
+      when 'job_tracker', 'sidekiq_tracker'
+        trigger_info[:type] = 'background_job'
+        trigger_info[:source] = 'job_middleware'
+      when 'manual_logging'
+        trigger_info[:type] = 'manual'
+        trigger_info[:source] = 'application_code'
+      end
+
+      trigger_info
+    end
+
+    def extract_activerecord_trigger_info
+      # Try to determine which ActiveRecord callback triggered this
+      caller_lines = caller(1, 15)
+
+      callback_caller = caller_lines.find { |line| line.include?('log_') && line.include?('_event') }
+
+      if callback_caller && callback_caller.match(/log_(\w+)_event/)
+        callback_type = ::Regexp.last_match(1)
+        return {
+          type: 'activerecord_callback',
+          hook: "after_#{callback_type}",
+          source: 'activerecord_observer'
+        }
+      end
+
+      {
+        type: 'activerecord_callback',
+        hook: 'unknown',
+        source: 'activerecord_observer'
+      }
+    end
+
+    def find_project_root
+      # Try to find the project root directory
+      current_dir = Dir.pwd
+
+      # Look for common project root indicators
+      root_indicators = %w[Gemfile Rakefile .git config.ru]
+
+      while current_dir != '/' && current_dir != current_dir.dirname
+        return current_dir if root_indicators.any? { |indicator| File.exist?(File.join(current_dir, indicator)) }
+
+        current_dir = File.dirname(current_dir)
+      end
+
+      Dir.pwd # Fallback to current directory
     end
 
     # Recursively freeze nested hashes and arrays
