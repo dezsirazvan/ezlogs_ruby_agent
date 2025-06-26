@@ -37,10 +37,9 @@ module EzlogsRubyAgent
     end
 
     def log_update_event
-      # Use saved_changes instead of previous_changes for Rails 5.2+
-      changes = respond_to?(:saved_changes) ? saved_changes : previous_changes
-      # Use saved_attributes instead of attributes_before_last_save
-      previous_attrs = respond_to?(:saved_attributes) ? saved_attributes : attributes_was
+      # Use safe methods to get changes and previous attributes
+      changes = get_saved_changes
+      previous_attrs = get_saved_attributes
       log_event("update", changes, previous_attrs)
     end
 
@@ -872,17 +871,23 @@ module EzlogsRubyAgent
       "txn_#{SecureRandom.urlsafe_base64(8)}"
     end
 
-    # Rails 5.2+ compatibility methods
-    def saved_changes
-      respond_to?(:saved_changes) ? super : previous_changes
+    # Rails 5.2+ compatibility methods - simply use Rails methods when available
+    def get_saved_changes
+      return super if defined?(super) && respond_to?(:saved_changes,
+                                                     true) && !self.class.instance_method(:saved_changes).owner == EzlogsRubyAgent::CallbacksTracker
+
+      respond_to?(:previous_changes) ? previous_changes : {}
+    rescue StandardError
+      respond_to?(:previous_changes) ? previous_changes : {}
     end
 
-    def saved_attributes
-      respond_to?(:saved_attributes) ? super : attributes_was
-    end
+    def get_saved_attributes
+      return super if defined?(super) && respond_to?(:saved_attributes,
+                                                     true) && !self.class.instance_method(:saved_attributes).owner == EzlogsRubyAgent::CallbacksTracker
 
-    def attributes_was
-      respond_to?(:attributes_was) ? super : attributes
+      respond_to?(:attributes_before_last_save) ? attributes_before_last_save : attributes
+    rescue StandardError
+      respond_to?(:attributes_before_last_save) ? attributes_before_last_save : attributes
     end
 
     def in_sidekiq_job?
