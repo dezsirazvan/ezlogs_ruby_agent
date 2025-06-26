@@ -19,6 +19,9 @@ module EzlogsRubyAgent
     private
 
     def trackable_resource?
+      # Temporarily disable callbacks tracking during Sidekiq job execution to prevent frozen hash issues
+      return false if in_sidekiq_job?
+
       config = EzlogsRubyAgent.config
       resource_name = self.class.name
 
@@ -336,6 +339,13 @@ module EzlogsRubyAgent
 
     def attributes_was
       respond_to?(:attributes_was) ? super : attributes
+    end
+
+    def in_sidekiq_job?
+      # Check if we're currently in a Sidekiq job context
+      Thread.current.thread_variable_get(:sidekiq_context) ||
+        Thread.current[:sidekiq_context] ||
+        caller.any? { |line| line.include?('sidekiq') && (line.include?('job') || line.include?('processor')) }
     end
   end
 end

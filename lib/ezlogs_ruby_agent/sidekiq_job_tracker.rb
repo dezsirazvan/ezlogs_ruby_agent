@@ -29,6 +29,8 @@ module EzlogsRubyAgent
       result = nil
 
       begin
+        # Clear any existing correlation context to prevent frozen hash issues
+        CorrelationManager.clear_context
         result = yield
         status = 'completed'
       rescue StandardError => e
@@ -138,6 +140,9 @@ module EzlogsRubyAgent
     end
 
     def trackable_job?(job_name, config)
+      # Temporarily exclude CreateOutcomeJob due to frozen hash issues
+      return false if job_name == 'CreateOutcomeJob'
+
       resource_match = config.included_resources.empty? ||
                        config.included_resources.map(&:downcase).any? do |resource|
                          job_name.downcase.include?(resource.downcase)
