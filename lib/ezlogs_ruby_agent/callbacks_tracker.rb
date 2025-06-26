@@ -47,7 +47,7 @@ module EzlogsRubyAgent
       # Create UniversalEvent with proper schema and correlation inheritance
       event = UniversalEvent.new(
         event_type: 'data.change',
-        action: "#{model_name.singular}.#{action}",
+        action: "#{self.class.model_name.singular}.#{action}",
         actor: extract_actor,
         subject: extract_subject,
         metadata: build_change_metadata(action, changes, previous_attributes),
@@ -67,16 +67,16 @@ module EzlogsRubyAgent
 
     def extract_subject
       {
-        type: model_name.singular,
+        type: self.class.model_name.singular,
         id: respond_to?(:id) ? id.to_s : nil,
-        table: table_name
+        table: self.class.table_name
       }.compact
     end
 
     def build_change_metadata(action, changes, previous_attributes)
       metadata = {
         model: self.class.name,
-        table: model_name.plural,
+        table: self.class.model_name.plural,
         record_id: id,
         action: action,
         changes: changes,
@@ -158,14 +158,6 @@ module EzlogsRubyAgent
       end
     rescue StandardError
       "txn_#{SecureRandom.urlsafe_base64(8)}"
-    end
-
-    def model_name
-      OpenStruct.new(singular: self.class.name.underscore)
-    end
-
-    def table_name
-      self.class.table_name
     end
 
     # Rails 5.2+ compatibility methods
