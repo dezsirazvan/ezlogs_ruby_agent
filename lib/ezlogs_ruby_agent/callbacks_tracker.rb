@@ -37,9 +37,19 @@ module EzlogsRubyAgent
     end
 
     def log_update_event
-      # Use safe methods to get changes and previous attributes
-      changes = get_saved_changes
-      previous_attrs = get_saved_attributes
+      # Use Rails 5.2+ methods if available, otherwise fallback to older methods
+      changes = if respond_to?(:saved_changes, true) && !saved_changes.nil?
+                  saved_changes
+                else
+                  respond_to?(:previous_changes) ? previous_changes : {}
+                end
+
+      previous_attrs = if respond_to?(:attributes_before_last_save)
+                         attributes_before_last_save
+                       else
+                         attributes
+                       end
+
       log_event("update", changes, previous_attrs)
     end
 
@@ -228,7 +238,7 @@ module EzlogsRubyAgent
         # Enhanced existing metadata
         action: action,
         model: self.class.name,
-        table: self.class.table_name,
+        table: (self.class.respond_to?(:table_name) ? self.class.table_name : self.class.name.tableize),
         changes: sanitize_changes_deeply(changes),
         previous_attributes: sanitize_changes_deeply(previous_attributes),
         record_id: respond_to?(:id) ? id.to_s : nil,
@@ -869,25 +879,6 @@ module EzlogsRubyAgent
       end
     rescue StandardError
       "txn_#{SecureRandom.urlsafe_base64(8)}"
-    end
-
-    # Rails 5.2+ compatibility methods - simply use Rails methods when available
-    def get_saved_changes
-      return super if defined?(super) && respond_to?(:saved_changes,
-                                                     true) && !self.class.instance_method(:saved_changes).owner == EzlogsRubyAgent::CallbacksTracker
-
-      respond_to?(:previous_changes) ? previous_changes : {}
-    rescue StandardError
-      respond_to?(:previous_changes) ? previous_changes : {}
-    end
-
-    def get_saved_attributes
-      return super if defined?(super) && respond_to?(:saved_attributes,
-                                                     true) && !self.class.instance_method(:saved_attributes).owner == EzlogsRubyAgent::CallbacksTracker
-
-      respond_to?(:attributes_before_last_save) ? attributes_before_last_save : attributes
-    rescue StandardError
-      respond_to?(:attributes_before_last_save) ? attributes_before_last_save : attributes
     end
 
     def in_sidekiq_job?
