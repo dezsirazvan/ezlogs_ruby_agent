@@ -886,22 +886,28 @@ module EzlogsRubyAgent
       when Hash
         sanitize_hash_deeply(value, sensitive_fields)
       when Array
-        # Create a duplicate to avoid modifying frozen arrays
-        begin
-          value.map { |v| sanitize_argument_value(v, sensitive_fields) }
-        rescue FrozenError
-          # If array is frozen, build a new one manually
-          value.to_a.map { |v| sanitize_argument_value(v, sensitive_fields) }
-        end
+        # Always create a new array to avoid frozen references
+        value.map { |v| sanitize_argument_value(v, sensitive_fields) }
       when String
         if contains_sensitive_data?(value, sensitive_fields)
           '[REDACTED]'
         else
-          # Truncate very long strings
-          value.length > 1000 ? "#{value[0..997]}..." : value
+          # Return a mutable copy to avoid frozen string issues
+          truncated = value.length > 1000 ? "#{value[0..997]}..." : value
+          truncated.dup # Ensure it's mutable
         end
       else
-        value
+        # For primitives, return as-is (they're immutable but safe)
+        # For objects, try to return a safe copy
+        if value.frozen? && value.respond_to?(:dup)
+          begin
+            value.dup
+          rescue StandardError
+            value
+          end
+        else
+          value
+        end
       end
     end
 
@@ -912,10 +918,11 @@ module EzlogsRubyAgent
       sanitized = {}
       begin
         hash.each do |key, value|
+          # Ensure the key is also mutable
           sanitized_key = if sensitive_fields.any? { |field| key.to_s.downcase.include?(field.downcase) }
                             '[REDACTED_KEY]'
                           else
-                            key
+                            key.respond_to?(:dup) ? key.dup : key
                           end
           sanitized[sanitized_key] = sanitize_argument_value(value, sensitive_fields)
         end

@@ -426,37 +426,52 @@ module EzlogsRubyAgent
       when Hash
         sanitize_sidekiq_hash_deeply(value, sensitive_fields)
       when Array
-        begin
-          value.map { |v| sanitize_sidekiq_argument_value(v, sensitive_fields) }
-        rescue FrozenError
-          value.to_a.map { |v| sanitize_sidekiq_argument_value(v, sensitive_fields) }
-        end
+        # Always create a new array to avoid frozen references
+        value.map { |v| sanitize_sidekiq_argument_value(v, sensitive_fields) }
       when String
         if contains_sensitive_data?(value, sensitive_fields)
           '[REDACTED]'
         else
-          value.length > 1000 ? "#{value[0..997]}..." : value
+          # Return a mutable copy to avoid frozen string issues
+          truncated = value.length > 1000 ? "#{value[0..997]}..." : value
+          truncated.dup # Ensure it's mutable
         end
       else
-        value
+        # For primitives, return as-is (they're immutable but safe)
+        # For objects, try to return a safe copy
+        if value.frozen? && value.respond_to?(:dup)
+          begin
+            value.dup
+          rescue StandardError
+            value
+          end
+        else
+          value
+        end
       end
     end
 
     def sanitize_sidekiq_hash_deeply(hash, sensitive_fields)
       return {} unless hash.is_a?(Hash)
 
+      # Always build a new hash to avoid modifying the original (frozen or not)
       sanitized = {}
-      hash.each do |key, value|
-        sanitized[key] = if contains_sensitive_data?(key.to_s, sensitive_fields)
-                           '[REDACTED]'
-                         else
-                           sanitize_sidekiq_argument_value(value, sensitive_fields)
-                         end
+      begin
+        hash.each do |key, value|
+          # Ensure the key is also mutable
+          sanitized_key = if contains_sensitive_data?(key.to_s, sensitive_fields)
+                            '[REDACTED_KEY]'
+                          else
+                            key.respond_to?(:dup) ? key.dup : key
+                          end
+          sanitized[sanitized_key] = sanitize_sidekiq_argument_value(value, sensitive_fields)
+        end
+      rescue StandardError => e
+        warn "[EzlogsRubyAgent] Error sanitizing Sidekiq hash: #{e.message}"
+        return {}
       end
+
       sanitized
-    rescue FrozenError
-      # Handle frozen hashes
-      {}
     end
 
     def contains_sensitive_data?(value, sensitive_fields)
