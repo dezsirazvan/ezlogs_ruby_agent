@@ -56,26 +56,23 @@ module EzlogsRubyAgent
                    correlation_context: nil, payload: nil, timing: nil)
       @event_type = event_type
       @action = action
-      @actor = deep_freeze(actor.frozen? ? safe_dup_hash(actor) : actor.dup)
+      @actor = actor.frozen? ? safe_dup_hash(actor) : actor.dup
       @subject = if subject
-                   safe_subject = subject.frozen? ? safe_dup_hash(subject) : subject.dup
-                   deep_freeze(safe_subject)
+                   subject.frozen? ? safe_dup_hash(subject) : subject.dup
                  else
                    nil
                  end
       @metadata = if metadata
-                    safe_metadata = metadata.frozen? ? safe_dup_hash(metadata) : metadata.dup
-                    deep_freeze(safe_metadata)
+                    metadata.frozen? ? safe_dup_hash(metadata) : metadata.dup
                   else
-                    {}.freeze
+                    {}
                   end
       @event_created_at = Time.now.utc
       @event_id = event_id || generate_event_id
       @correlation_id = correlation_id || extract_correlation_id
       @correlation_context = correlation_context
       @payload = if payload
-                   safe_payload = payload.frozen? ? safe_dup_hash(payload) : payload.dup
-                   deep_freeze(safe_payload)
+                   payload.frozen? ? safe_dup_hash(payload) : payload.dup
                  else
                    nil
                  end
@@ -89,7 +86,6 @@ module EzlogsRubyAgent
       build_platform_context
       build_environment_context
       build_impact_classification
-      freeze_self
     end
 
     # Convert event to hash representation for serialization
@@ -155,7 +151,7 @@ module EzlogsRubyAgent
       event_creation_end = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       timing[:event_creation_time_ms] = ((event_creation_end - event_creation_start) * 1000).round(6)
 
-      deep_freeze(timing)
+      timing
     end
 
     def extract_timing_from_context(timing_context)
@@ -717,26 +713,16 @@ module EzlogsRubyAgent
     end
 
     # Recursively freeze nested hashes and arrays
+    # NOTE: Commented out deep_freeze to prevent freezing application objects
     def deep_freeze(obj)
-      case obj
-      when Hash
-        obj.each_value { |v| deep_freeze(v) }
-        obj.freeze
-      when Array
-        obj.each { |v| deep_freeze(v) }
-        obj.freeze
-      else
-        obj.freeze if obj.respond_to?(:freeze)
-      end
+      # Don't freeze objects to avoid interfering with application code
       obj
     end
 
     # Make the event instance immutable
+    # NOTE: Commented out freeze_self to prevent freezing application objects
     def freeze_self
-      instance_variables.each do |var|
-        instance_variable_get(var).freeze
-      end
-      freeze
+      # Don't freeze the event or its instance variables to avoid interfering with application code
     end
   end
 end
