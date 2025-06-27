@@ -338,49 +338,50 @@ module EzlogsRubyAgent
 
     # ✅ CRITICAL FIX: Extract correlation ID with flow_id priority
     def extract_correlation_id
-      context = Thread.current[:ezlogs_context]
+      context = CorrelationManager.current_context
 
-      # Priority 1: Use flow_id for correlation (CRITICAL FIX)
-      if context.respond_to?(:flow_id) && context.flow_id
-        return context.flow_id
-      elsif context.is_a?(Hash) && context[:flow_id]
-        return context[:flow_id]
-      end
-
-      # Priority 2: Use existing correlation_id
-      if context.respond_to?(:correlation_id)
+      # Priority 1: Use existing correlation_id from context if available
+      if context.respond_to?(:correlation_id) && context.correlation_id
         return context.correlation_id
-      elsif context.is_a?(Hash) && context.key?(:correlation_id)
+      elsif context.is_a?(Hash) && context[:correlation_id]
         return context[:correlation_id]
       end
+
+      # Priority 2: Use provided correlation_id parameter
+      return @correlation_id if @correlation_id
 
       # Priority 3: Fallback to legacy thread variable
       return Thread.current[:correlation_id] if Thread.current[:correlation_id]
 
-      # Priority 4: Generate new flow-based correlation ID
-      "flow_#{SecureRandom.urlsafe_base64(16).tr('_-', 'cd')}"
+      # Priority 4: Generate new correlation ID
+      "corr_#{SecureRandom.urlsafe_base64(16).tr('_-', 'ab')}"
     end
 
-    # ✅ CRITICAL FIX: Build correlation context with proper flow_id usage
+    # ✅ CRITICAL FIX: Build correlation context with proper primary_correlation_id inheritance
     def build_correlation_context
-      context = Thread.current[:ezlogs_context]
-      context_hash =
-        if context.is_a?(Hash)
-          context
-        elsif context.respond_to?(:to_h)
-          context.to_h
-        else
-          {}
-        end
+      context = CorrelationManager.current_context
+      context_hash = if context.respond_to?(:to_h)
+                       context.to_h
+                     elsif context.is_a?(Hash)
+                       context
+                     else
+                       {}
+                     end
 
-      # Use flow_id as the primary correlation identifier
-      flow_id = context_hash[:flow_id] || @correlation_id
+      # Extract primary_correlation_id - this is the KEY fix for story linking
+      primary_correlation_id = if context_hash[:primary_correlation_id]
+                                 context_hash[:primary_correlation_id]
+                               elsif context.respond_to?(:primary_correlation_id) && context.primary_correlation_id
+                                 context.primary_correlation_id
+                               else
+                                 @correlation_id
+                               end
 
       # Build hierarchical correlation structure
       @correlation = {
         correlation_id: @correlation_id,
-        primary_correlation_id: context_hash[:primary_correlation_id] || @correlation_id,
-        flow_id: flow_id,
+        primary_correlation_id: primary_correlation_id,
+        flow_id: context_hash[:flow_id],
         parent_flow_id: context_hash[:parent_flow_id],
         session_id: context_hash[:session_id],
         request_id: context_hash[:request_id],

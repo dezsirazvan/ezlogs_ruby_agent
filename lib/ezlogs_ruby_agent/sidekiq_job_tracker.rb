@@ -15,7 +15,8 @@ module EzlogsRubyAgent
 
       begin
         # Restore correlation context for the job execution
-        correlation_context = if correlation_data && correlation_data[:correlation_id]
+        correlation_context = if correlation_data && !correlation_data.empty? &&
+                                 (correlation_data[:correlation_id] || correlation_data['correlation_id'])
                                 # Use the new hierarchical inherit_context with job component
                                 CorrelationManager.inherit_context(correlation_data, component: 'job', metadata: {
                                   job_class: job_name,
@@ -24,9 +25,11 @@ module EzlogsRubyAgent
                                 })
                               else
                                 # Fallback: create new context if none available
+                                warn "[EzlogsRubyAgent] Creating new correlation context for job #{job_name} (no parent context found)"
                                 CorrelationManager.start_flow_context('job', job['jid'], {
                                   job_class: job_name,
-                                  queue: job['queue']
+                                  queue: job['queue'],
+                                  reason: 'no_parent_correlation'
                                 })
                               end
 
@@ -522,26 +525,18 @@ module EzlogsRubyAgent
       correlation_data = if job.is_a?(Hash) && job['_correlation_data']
                            job['_correlation_data']
                          elsif job.is_a?(Hash) && job['correlation_id']
-                           { correlation_id: job['correlation_id'] }
+                           # Fallback for legacy format - build minimal context
+                           {
+                             correlation_id: job['correlation_id'],
+                             primary_correlation_id: job['correlation_id']
+                           }
                          else
+                           # Return empty hash instead of nil - this is the critical fix
                            {}
                          end
 
-      # Handle frozen hashes that might come from Sidekiq/ActiveJob
-      return {} unless correlation_data.is_a?(Hash)
-
-      # Create unfrozen copy to prevent FrozenError
-      unfrozen_data = {}
-      correlation_data.each do |key, value|
-        unfrozen_data[key] = value.frozen? ? value.dup : value
-      rescue StandardError
-        unfrozen_data[key] = value
-      end
-
-      unfrozen_data
-    rescue StandardError => e
-      warn "[Ezlogs] Failed to extract correlation data: #{e.message}"
-      {}
+      # ✅ CRITICAL FIX: Ensure we always return a hash, never nil
+      correlation_data || {}
     end
 
     def extract_resource_id_from_job(job)

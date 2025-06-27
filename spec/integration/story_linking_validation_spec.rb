@@ -251,4 +251,109 @@ RSpec.describe 'Story Linking Validation', type: :integration do
       expect(event.correlation[:primary_correlation_id]).to be_present
     end
   end
+
+  describe 'Story Linking Bug Investigation - Production Issue' do
+    it 'reproduces and fixes the production correlation issue' do
+      # 🚨 REPRODUCING THE EXACT ISSUE FROM THE TASK:
+      # Events 1575, 1576 should have same primary_correlation_id as 1577, 1578
+      # But currently they don't - this test validates the fix
+
+      # 1. Start HTTP request context (like Event 1575/1576)
+      http_context = EzlogsRubyAgent::CorrelationManager.start_request_context(
+        'req_fVXPqTEFgDh7lyOw0o7nQA', # From task description
+        'sess_user_124142'
+      )
+      original_primary_id = http_context.primary_correlation_id
+
+      # Create HTTP request event (Event 1575 equivalent)
+      http_event = EzlogsRubyAgent::UniversalEvent.new(
+        event_type: 'http.request',
+        action: 'POST /graphql',
+        actor: { type: 'user', id: 124_142, email: '[REDACTED]' },
+        subject: { type: 'graphql', id: 'OverrideEquipmentItemStatus' }
+      )
+      EzlogsRubyAgent.writer.log(http_event)
+
+      # Create database change event (Event 1576 equivalent)
+      EzlogsRubyAgent::CorrelationManager.create_child_context(
+        component: 'database',
+        operation: 'update'
+      )
+
+      db_event = EzlogsRubyAgent::UniversalEvent.new(
+        event_type: 'data.change',
+        action: 'smart_portal_equipment_item.update',
+        actor: { type: 'user', id: 124_142, email: '[REDACTED]' },
+        subject: { type: 'smart_portal_equipment_item', id: 'fe56e1b7-b63f-4a1f-9e2f-331419581e05' }
+      )
+      EzlogsRubyAgent.writer.log(db_event)
+
+      # 2. Extract correlation data for job enqueueing (THIS IS THE CRITICAL STEP)
+      correlation_data = EzlogsRubyAgent::CorrelationManager.extract_correlation_data
+
+      # 3. Simulate background job execution with inherited context (Events 1577/1578)
+      job_events = []
+      Thread.new do
+        # 🔥 CRITICAL: Job should inherit the original primary_correlation_id
+        job_context = EzlogsRubyAgent::CorrelationManager.inherit_context(
+          correlation_data,
+          component: 'job',
+          metadata: { job_class: 'SmartPortal::LogCompanyEventJob' }
+        )
+
+        # Create job execution event (Event 1577 equivalent)
+        job_event = EzlogsRubyAgent::UniversalEvent.new(
+          event_type: 'job.execution',
+          action: 'SmartPortal::LogCompanyEventJob.completed',
+          actor: { type: 'user', id: 124_142, email: '[REDACTED]' },
+          subject: { type: 'job', id: '7af69a783c763b7ac0085232' }
+        )
+        EzlogsRubyAgent.writer.log(job_event)
+
+        # Create database event within job (Event 1578 equivalent)
+        EzlogsRubyAgent::CorrelationManager.create_child_context(
+          component: 'database',
+          operation: 'create'
+        )
+
+        db_in_job_event = EzlogsRubyAgent::UniversalEvent.new(
+          event_type: 'data.change',
+          action: 'smart_portal_company_event_equipment_item_deleted.create',
+          actor: { type: 'user', id: 124_142, email: '[REDACTED]' },
+          subject: { type: 'smart_portal_company_event_equipment_item_deleted',
+                     id: '6b00384c-7e71-4a15-92bc-9cefcecb352a' }
+        )
+        EzlogsRubyAgent.writer.log(db_in_job_event)
+
+        job_events << job_event
+        job_events << db_in_job_event
+      end.join
+
+      # ✅ VALIDATION: All events should share the same primary_correlation_id
+      all_events = EzlogsRubyAgent.captured_events
+      expect(all_events.size).to eq(4)
+
+      # 🎯 THE CRITICAL ASSERTION: Fix the story linking issue
+      primary_correlation_ids = all_events.map { |e| e[:event][:correlation][:primary_correlation_id] }.uniq
+      puts "\n🔍 DEBUG: Primary correlation IDs found: #{primary_correlation_ids.inspect}"
+      puts "🔍 DEBUG: Original primary ID: #{original_primary_id}"
+
+      # MUST have exactly ONE primary correlation ID across all events
+      expect(primary_correlation_ids.size).to eq(1),
+                                              "Events are split into #{primary_correlation_ids.size} stories instead of 1!"
+      expect(primary_correlation_ids.first).to eq(original_primary_id),
+                                               'Job events have different primary_correlation_id!'
+
+      # Additional validation: Events should have different correlation_ids but same primary
+      correlation_ids = all_events.map { |e| e[:event][:correlation][:correlation_id] }.uniq
+      expect(correlation_ids.size).to eq(4), 'Each event should have unique correlation_id'
+
+      # Validate request_id inheritance for background jobs
+      request_ids = all_events.map { |e| e[:event][:correlation][:request_id] }.compact.uniq
+      expect(request_ids.size).to eq(1), 'All events should share the same request_id'
+      expect(request_ids.first).to eq('req_fVXPqTEFgDh7lyOw0o7nQA')
+
+      puts "✅ SUCCESS: All events correctly grouped into single story with primary_correlation_id: #{primary_correlation_ids.first}"
+    end
+  end
 end
