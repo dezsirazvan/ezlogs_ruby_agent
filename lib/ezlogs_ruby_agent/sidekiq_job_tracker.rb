@@ -79,6 +79,13 @@ module EzlogsRubyAgent
       ensure
         end_time = Time.now
         begin
+          # Create a safe copy of job arguments to avoid frozen issues
+          safe_job_args = begin
+            job['args'].dup
+          rescue StandardError
+            []
+          end
+
           event = UniversalEvent.new(
             event_type: 'job.execution',
             action: "#{job_name}.#{status}",
@@ -91,7 +98,7 @@ module EzlogsRubyAgent
             },
             metadata: build_comprehensive_sidekiq_metadata(
               job_name: job_name,
-              arguments: job['args'],
+              arguments: safe_job_args,
               status: status,
               error_message: error_message,
               result: result,
@@ -561,6 +568,9 @@ module EzlogsRubyAgent
     end
 
     def trackable_job?(job_name, config)
+      # Temporarily exclude CreateOutcomeJob until we identify the root cause
+      return false if job_name == 'CreateOutcomeJob'
+
       resource_match = config.included_resources.empty? ||
                        config.included_resources.map(&:downcase).any? do |resource|
                          job_name.downcase.include?(resource.downcase)

@@ -44,7 +44,7 @@ module EzlogsRubyAgent
                     else
                       {}
                     end
-        freeze
+        # Don't freeze the context object to avoid freezing metadata and other fields
       end
 
       def to_h
