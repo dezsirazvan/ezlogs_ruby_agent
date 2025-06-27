@@ -989,7 +989,7 @@ module EzlogsRubyAgent
     end
 
     def should_track_model?
-      return false unless EzlogsRubyAgent.config.tracking_enabled
+      return false unless EzlogsRubyAgent.config.instrumentation.active_record
 
       model_name = self.class.name.downcase
 
