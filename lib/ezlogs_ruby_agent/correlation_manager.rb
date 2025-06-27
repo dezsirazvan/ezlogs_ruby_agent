@@ -99,7 +99,9 @@ module EzlogsRubyAgent
         child_flow_id = "flow_#{component}_#{SecureRandom.urlsafe_base64(8).tr('_-', 'cd')}"
         child_chain = @chain + [component]
 
-        child_metadata = @metadata.merge(
+        # Safely merge metadata, handling frozen parent metadata
+        base_metadata = @metadata.frozen? ? deep_dup_metadata(@metadata) : @metadata.dup
+        child_metadata = base_metadata.merge(
           metadata,
           parent_correlation_id: @correlation_id,
           inherited_from: @correlation_id,

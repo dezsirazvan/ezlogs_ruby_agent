@@ -906,30 +906,24 @@ module EzlogsRubyAgent
     end
 
     def sanitize_hash_deeply(hash, sensitive_fields)
-      # Create a duplicate to avoid modifying frozen hashes
-      hash_copy = hash.dup
+      return {} unless hash.is_a?(Hash)
       
-      hash_copy.transform_values do |value|
-        sanitize_argument_value(value, sensitive_fields)
-      end.transform_keys do |key|
-        # Redact sensitive keys
-        if sensitive_fields.any? { |field| key.to_s.downcase.include?(field.downcase) }
-          '[REDACTED_KEY]'
-        else
-          key
-        end
-      end
-    rescue FrozenError
-      # If we still can't modify it, build a new hash manually
+      # Always build a new hash to avoid modifying the original (frozen or not)
       sanitized = {}
-      hash.each do |key, value|
-        sanitized_key = if sensitive_fields.any? { |field| key.to_s.downcase.include?(field.downcase) }
-                          '[REDACTED_KEY]'
-                        else
-                          key
-                        end
-        sanitized[sanitized_key] = sanitize_argument_value(value, sensitive_fields)
+      begin
+        hash.each do |key, value|
+          sanitized_key = if sensitive_fields.any? { |field| key.to_s.downcase.include?(field.downcase) }
+                            '[REDACTED_KEY]'
+                          else
+                            key
+                          end
+          sanitized[sanitized_key] = sanitize_argument_value(value, sensitive_fields)
+        end
+      rescue StandardError => e
+        warn "[EzlogsRubyAgent] Error sanitizing hash: #{e.message}"
+        return {}
       end
+      
       sanitized
     end
 
@@ -1261,6 +1255,7 @@ module EzlogsRubyAgent
       if ENV['RACK_ENV'] == 'test' || ENV['RAILS_ENV'] == 'test' || (defined?(RSpec) && RSpec.respond_to?(:configuration))
         return true
       end
+      
       config = EzlogsRubyAgent.config
       job_name = self.class.name.downcase
 
