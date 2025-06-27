@@ -176,13 +176,16 @@ module EzlogsRubyAgent
           inherited_at: Time.now.utc
         )
 
-        # Preserve parent's correlation_id if it was explicitly set
+        # Preserve parent's correlation_id - prioritize metadata correlation_id if explicitly provided
         correlation_id = if parent_context.is_a?(Hash) && parent_context[:correlation_id]
                            parent_context[:correlation_id]
-                         elsif parent.respond_to?(:metadata) && parent.metadata[:correlation_id]
-                           parent.metadata[:correlation_id]
+                         elsif inherited.metadata[:correlation_id]
+                           inherited.metadata[:correlation_id]
+                         elsif parent.respond_to?(:correlation_id) && parent.correlation_id
+                           parent.correlation_id
                          else
-                           inherited.correlation_id
+                           # Generate new correlation ID only if absolutely necessary
+                           generate_correlation_id
                          end
 
         new_context = Context.new(
@@ -339,6 +342,10 @@ module EzlogsRubyAgent
 
       def set_context(context)
         Thread.current[CONTEXT_KEY] = context
+      end
+
+      def generate_correlation_id
+        "corr_#{SecureRandom.urlsafe_base64(16).tr('_-', 'ab')}"
       end
 
       # Helper method to safely deep duplicate frozen metadata (class method version)

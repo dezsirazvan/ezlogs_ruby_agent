@@ -24,7 +24,7 @@ RSpec.describe EzlogsRubyAgent::SidekiqJobTracker do
   it 'restores correlation from job hash' do
     job = { '_correlation_data' => { correlation_id: 'corr_abc' }, 'args' => [{}], 'jid' => 'jid1',
             'queue' => 'default' }
-    expect(EzlogsRubyAgent::CorrelationManager).to receive(:restore_context).with(job['_correlation_data'])
+    expect(EzlogsRubyAgent::CorrelationManager).to receive(:inherit_context).with(job['_correlation_data'])
     begin
       tracker.call(worker, job, queue) { 'ok' }
     rescue StandardError

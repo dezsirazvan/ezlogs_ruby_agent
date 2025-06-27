@@ -8,18 +8,32 @@ module EzlogsRubyAgent
     def call(worker, job, _queue)
       config = EzlogsRubyAgent.config
       job_name = worker.class.name
-      # For now, don't restore correlation context to prevent frozen hash issues
-      # TODO: Re-enable once we solve the frozen hash modification issue
+
+      # Extract and restore correlation context
       correlation_data = extract_correlation_data(job)
       correlation_context = nil
 
-      # Temporarily disabled to prevent FrozenError
-      # begin
-      #   correlation_context = CorrelationManager.restore_context(correlation_data)
-      # rescue StandardError => e
-      #   warn "[Ezlogs] Failed to restore correlation context: #{e.message}"
-      #   correlation_context = nil
-      # end
+      begin
+        # Restore correlation context for the job execution
+        correlation_context = if correlation_data && correlation_data[:correlation_id]
+                                CorrelationManager.inherit_context(correlation_data)
+                              else
+                                # Fallback: create new context if none available
+                                CorrelationManager.start_flow_context('job', job['jid'], {
+                                  job_class: job_name,
+                                  queue: job['queue']
+                                })
+                              end
+      rescue StandardError => e
+        warn "[EzlogsRubyAgent] Failed to restore correlation context: #{e.message}"
+        # Create minimal context as fallback
+        correlation_context = CorrelationManager.start_flow_context('job', job['jid'], {
+          job_class: job_name,
+          queue: job['queue'],
+          error: e.message
+        })
+      end
+
       return yield unless trackable_job?(job_name, config)
 
       start_time = Time.now
@@ -79,8 +93,8 @@ module EzlogsRubyAgent
               worker: worker
             ),
             timing: build_comprehensive_sidekiq_timing(start_time, end_time, enqueued_at),
-            correlation_id: correlation_data[:correlation_id] || job['correlation_id'],
-            correlation_context: CorrelationManager.current_context
+            correlation_id: correlation_context&.correlation_id || correlation_data[:correlation_id] || job['correlation_id'],
+            correlation_context: correlation_context&.to_h
           )
           EzlogsRubyAgent.writer.log(event)
         rescue StandardError => e
