@@ -19,9 +19,6 @@ module EzlogsRubyAgent
     private
 
     def trackable_resource?
-      # Temporarily disable callbacks tracking during Sidekiq job execution to prevent frozen hash issues
-      return false if in_sidekiq_job?
-
       config = EzlogsRubyAgent.config
       resource_name = self.class.name
 

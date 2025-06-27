@@ -24,6 +24,8 @@ module EzlogsRubyAgent
                                   queue: job['queue']
                                 })
                               end
+
+        # inherit_context and start_flow_context automatically set the context in the current thread
       rescue StandardError => e
         warn "[EzlogsRubyAgent] Failed to restore correlation context: #{e.message}"
         # Create minimal context as fallback
@@ -59,8 +61,7 @@ module EzlogsRubyAgent
       result = nil
 
       begin
-        # Clear any existing correlation context to prevent frozen hash issues
-        CorrelationManager.clear_context
+        # Execute the job with the correlation context active
         result = yield
         status = 'completed'
       rescue StandardError => e
@@ -100,7 +101,7 @@ module EzlogsRubyAgent
         rescue StandardError => e
           warn "[Ezlogs] failed to create Sidekiq job event: #{e.message}"
         ensure
-          # Clean up thread-local storage
+          # Clean up thread-local storage for job-specific data
           Thread.current[:ezlogs_sidekiq_start_time] = nil
           Thread.current[:ezlogs_sidekiq_memory_before] = nil
           Thread.current[:ezlogs_sidekiq_gc_before] = nil
@@ -110,7 +111,9 @@ module EzlogsRubyAgent
           Thread.current[:ezlogs_cache_ops] = nil
           Thread.current[:ezlogs_file_ops] = nil
 
-          CorrelationManager.clear_context
+          # DO NOT clear correlation context here!
+          # Let the context persist so subsequent operations (data changes, nested jobs) inherit it.
+          # The context will be cleared when the thread naturally ends or when a new request starts.
         end
       end
     end
