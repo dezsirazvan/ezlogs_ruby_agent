@@ -30,59 +30,77 @@ module EzlogsRubyAgent
     end
 
     def log_create_event
-      log_event("create", attributes, nil)
+      return unless should_track_model?
+
+      begin
+        # Create a child context for database operations
+        EzlogsRubyAgent::CorrelationManager.create_child_context(
+          component: 'database',
+          operation: 'create',
+          metadata: { model: self.class.name, table: self.class.table_name }
+        )
+
+        event = UniversalEvent.new(
+          event_type: 'data.change',
+          action: "#{model_name&.singular || self.class.name.downcase}.create",
+          actor: extract_actor,
+          subject: extract_subject,
+          metadata: build_create_metadata,
+          timing: extract_timing_context
+        )
+        EzlogsRubyAgent.writer.log(event)
+      rescue StandardError => e
+        warn "[Ezlogs] failed to create data change event: #{e.message}"
+      end
     end
 
     def log_update_event
-      # Use Rails 5.2+ methods if available, otherwise fallback to older methods
-      changes = if respond_to?(:saved_changes, true) && !saved_changes.nil?
-                  saved_changes
-                else
-                  respond_to?(:previous_changes) ? previous_changes : {}
-                end
+      return unless should_track_model? && saved_changes_present?
 
-      previous_attrs = if respond_to?(:attributes_before_last_save)
-                         attributes_before_last_save
-                       else
-                         attributes
-                       end
+      begin
+        # Create a child context for database operations
+        EzlogsRubyAgent::CorrelationManager.create_child_context(
+          component: 'database',
+          operation: 'update',
+          metadata: { model: self.class.name, table: self.class.table_name }
+        )
 
-      log_event("update", changes, previous_attrs)
+        event = UniversalEvent.new(
+          event_type: 'data.change',
+          action: "#{model_name&.singular || self.class.name.downcase}.update",
+          actor: extract_actor,
+          subject: extract_subject,
+          metadata: build_update_metadata,
+          timing: extract_timing_context
+        )
+        EzlogsRubyAgent.writer.log(event)
+      rescue StandardError => e
+        warn "[Ezlogs] failed to create data change event: #{e.message}"
+      end
     end
 
     def log_destroy_event
-      log_event("destroy", attributes, nil)
-    end
-
-    def log_event(action, changes, previous_attributes = nil)
-      # ✅ CRITICAL FIX: Set up comprehensive timing context for data changes
-      start_time = Time.now
-      setup_data_change_timing_context(action, start_time)
+      return unless should_track_model?
 
       begin
-        # Safe extraction of model name
-        model_name = extract_safe_model_name
-
-        # Create UniversalEvent with proper schema and correlation inheritance
-        event = UniversalEvent.new(
-          event_type: 'data.change',
-          action: "#{model_name}.#{action}",
-          actor: extract_actor,
-          subject: extract_subject,
-          metadata: build_enhanced_data_change_metadata(action, changes, previous_attributes, start_time),
-          correlation_id: EzlogsRubyAgent::CorrelationManager.current_context&.correlation_id,
-          correlation_context: EzlogsRubyAgent::CorrelationManager.current_context,
-          timing: build_comprehensive_data_change_timing(action, start_time)
+        # Create a child context for database operations
+        EzlogsRubyAgent::CorrelationManager.create_child_context(
+          component: 'database',
+          operation: 'destroy',
+          metadata: { model: self.class.name, table: self.class.table_name }
         )
 
-        # Log the event
+        event = UniversalEvent.new(
+          event_type: 'data.change',
+          action: "#{model_name&.singular || self.class.name.downcase}.destroy",
+          actor: extract_actor,
+          subject: extract_subject,
+          metadata: build_destroy_metadata,
+          timing: extract_timing_context
+        )
         EzlogsRubyAgent.writer.log(event)
       rescue StandardError => e
-        warn "[Ezlogs] Failed to create callback event: #{e.message}"
-        warn "[Ezlogs] Callback error backtrace: #{e.backtrace.first(5).join("\n")}"
-      ensure
-        # Record completion timing
-        Thread.current[:ezlogs_data_change_completed_at] = Time.now
+        warn "[Ezlogs] failed to create data change event: #{e.message}"
       end
     end
 
@@ -968,6 +986,76 @@ module EzlogsRubyAgent
       Thread.current.thread_variable_get(:sidekiq_context) ||
         Thread.current[:sidekiq_context] ||
         caller.any? { |line| line.include?('sidekiq') && (line.include?('job') || line.include?('processor')) }
+    end
+
+    def should_track_model?
+      return false unless EzlogsRubyAgent.config.tracking_enabled
+
+      model_name = self.class.name.downcase
+
+      # Check inclusion list
+      if EzlogsRubyAgent.config.included_resources.any?
+        included = EzlogsRubyAgent.config.included_resources.any? do |resource|
+          model_name.include?(resource.downcase)
+        end
+        return false unless included
+      end
+
+      # Check exclusion list
+      excluded = EzlogsRubyAgent.config.excluded_resources.any? do |resource|
+        model_name.include?(resource.downcase)
+      end
+
+      !excluded
+    end
+
+    def saved_changes_present?
+      if respond_to?(:saved_changes, true) && !saved_changes.nil?
+        !saved_changes.empty?
+      elsif respond_to?(:previous_changes)
+        !previous_changes.empty?
+      else
+        true # Fallback to assuming changes
+      end
+    end
+
+    def build_create_metadata
+      build_change_metadata('create', attributes, nil)
+    end
+
+    def build_update_metadata
+      changes = if respond_to?(:saved_changes, true) && !saved_changes.nil?
+                  saved_changes
+                else
+                  respond_to?(:previous_changes) ? previous_changes : {}
+                end
+
+      previous_attrs = if respond_to?(:attributes_before_last_save)
+                         attributes_before_last_save
+                       else
+                         attributes
+                       end
+
+      build_change_metadata('update', changes, previous_attrs)
+    end
+
+    def build_destroy_metadata
+      build_change_metadata('destroy', attributes, nil)
+    end
+
+    def extract_timing_context
+      {
+        operation_start_time: Time.now.utc.iso8601(3),
+        database_timing: extract_database_timing
+      }
+    end
+
+    def extract_database_timing
+      {
+        query_count: Thread.current[:ezlogs_query_count] || 0,
+        total_query_time_ms: Thread.current[:ezlogs_total_query_time] || 0,
+        slowest_query_ms: Thread.current[:ezlogs_slowest_query] || 0
+      }
     end
   end
 end

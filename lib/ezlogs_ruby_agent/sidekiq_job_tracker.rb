@@ -16,7 +16,12 @@ module EzlogsRubyAgent
       begin
         # Restore correlation context for the job execution
         correlation_context = if correlation_data && correlation_data[:correlation_id]
-                                CorrelationManager.inherit_context(correlation_data)
+                                # Use the new hierarchical inherit_context with job component
+                                CorrelationManager.inherit_context(correlation_data, component: 'job', metadata: {
+                                  job_class: job_name,
+                                  queue: job['queue'],
+                                  jid: job['jid']
+                                })
                               else
                                 # Fallback: create new context if none available
                                 CorrelationManager.start_flow_context('job', job['jid'], {

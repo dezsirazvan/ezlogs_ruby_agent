@@ -48,8 +48,10 @@ RSpec.describe EzlogsRubyAgent::CorrelationManager do
     it 'inherits correlation data from parent context' do
       inherited = described_class.inherit_context(parent_context)
 
-      expect(inherited.correlation_id).to eq('corr_parent')
-      expect(inherited.flow_id).to eq('flow_parent')
+      # In hierarchical system, primary_correlation_id should match parent's correlation_id
+      expect(inherited.primary_correlation_id).to eq('corr_parent')
+      # Child gets new correlation_id but maintains primary reference
+      expect(inherited.correlation_id).not_to eq('corr_parent')
       expect(inherited.session_id).to eq('sess_parent')
       expect(inherited.request_id).to eq('req_parent')
     end
@@ -70,7 +72,8 @@ RSpec.describe EzlogsRubyAgent::CorrelationManager do
     it 'merges with existing context' do
       parent = described_class.start_request_context('req_parent', nil, { correlation_id: 'corr_parent' })
       inherited = described_class.inherit_context(parent)
-      expect(inherited.correlation_id).to eq('corr_parent')
+      # In hierarchical system, maintains primary correlation
+      expect(inherited.primary_correlation_id).to eq(parent.primary_correlation_id)
     end
   end
 
@@ -134,17 +137,19 @@ RSpec.describe EzlogsRubyAgent::CorrelationManager do
   end
 
   describe '.create_child_context' do
-    it 'creates child context with parent event ID' do
+    it 'creates child context with component hierarchy' do
       parent = described_class.start_request_context('req_123')
-      child = described_class.create_child_context('evt_child')
+      child = described_class.create_child_context(component: 'database', operation: 'create')
 
-      expect(child.correlation_id).to eq(parent.correlation_id)
-      expect(child.flow_id).to eq(parent.flow_id)
-      expect(child.parent_event_id).to eq('evt_child')
+      expect(child.primary_correlation_id).to eq(parent.primary_correlation_id)
+      expect(child.correlation_id).not_to eq(parent.correlation_id)
+      expect(child.parent_flow_id).to eq(parent.flow_id)
+      expect(child.chain).to include('web', 'database')
+      expect(child.depth).to eq(1)
     end
 
     it 'handles no current context gracefully' do
-      child = described_class.create_child_context('evt_123')
+      child = described_class.create_child_context(component: 'orphaned')
       expect(child.flow_id).to match(/^flow_orphaned_/)
       expect(child.correlation_id).to match(/^corr_/) # still random
     end
@@ -223,12 +228,15 @@ RSpec.describe EzlogsRubyAgent::CorrelationManager do
 
         expect(hash).to eq({
           correlation_id: 'corr_123',
+          primary_correlation_id: 'corr_123',
           flow_id: 'flow_123',
           session_id: 'sess_123',
           request_id: 'req_123',
           parent_event_id: 'evt_123',
           started_at: context.started_at,
-          metadata: {}
+          metadata: {},
+          depth: 0,
+          chain: []
         })
       end
 

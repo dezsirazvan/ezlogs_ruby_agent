@@ -376,14 +376,19 @@ module EzlogsRubyAgent
       # Use flow_id as the primary correlation identifier
       flow_id = context_hash[:flow_id] || @correlation_id
 
+      # Build hierarchical correlation structure
       @correlation = {
         correlation_id: @correlation_id,
+        primary_correlation_id: context_hash[:primary_correlation_id] || @correlation_id,
         flow_id: flow_id,
+        parent_flow_id: context_hash[:parent_flow_id],
         session_id: context_hash[:session_id],
         request_id: context_hash[:request_id],
         transaction_id: context_hash[:transaction_id],
         trace_id: context_hash[:trace_id],
-        parent_event_id: context_hash[:parent_event_id]
+        parent_event_id: context_hash[:parent_event_id],
+        depth: context_hash[:depth] || 0,
+        chain: context_hash[:chain] || []
       }.compact.freeze
     end
 

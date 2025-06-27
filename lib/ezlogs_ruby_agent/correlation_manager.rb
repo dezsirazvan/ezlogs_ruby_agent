@@ -15,19 +15,24 @@ module EzlogsRubyAgent
   # @example Getting current context
   #   context = CorrelationManager.current_context
   class CorrelationManager
-    # Correlation context structure
+    # Correlation context structure with hierarchical support
     class Context
-      attr_reader :correlation_id, :flow_id, :session_id, :request_id,
-                  :parent_event_id, :started_at, :metadata
+      attr_reader :correlation_id, :primary_correlation_id, :flow_id, :session_id, :request_id,
+                  :parent_event_id, :parent_flow_id, :started_at, :metadata, :depth, :chain
 
-      def initialize(correlation_id: nil, flow_id: nil, session_id: nil,
-                     request_id: nil, parent_event_id: nil, started_at: nil, metadata: {})
+      def initialize(correlation_id: nil, primary_correlation_id: nil, flow_id: nil, session_id: nil,
+                     request_id: nil, parent_event_id: nil, parent_flow_id: nil, started_at: nil,
+                     metadata: {}, depth: 0, chain: [])
         @correlation_id = correlation_id || generate_correlation_id
+        @primary_correlation_id = primary_correlation_id || @correlation_id
         @flow_id = flow_id || generate_flow_id
         @session_id = session_id
         @request_id = request_id
         @parent_event_id = parent_event_id
+        @parent_flow_id = parent_flow_id
         @started_at = started_at || Time.now.utc
+        @depth = depth
+        @chain = chain.dup
 
         # Safely handle metadata that might be frozen
         @metadata = if metadata.is_a?(Hash)
@@ -45,12 +50,16 @@ module EzlogsRubyAgent
       def to_h
         {
           correlation_id: @correlation_id,
+          primary_correlation_id: @primary_correlation_id,
           flow_id: @flow_id,
           session_id: @session_id,
           request_id: @request_id,
           parent_event_id: @parent_event_id,
+          parent_flow_id: @parent_flow_id,
           started_at: @started_at,
-          metadata: @metadata
+          metadata: @metadata,
+          depth: @depth,
+          chain: @chain
         }.compact
       end
 
@@ -67,13 +76,49 @@ module EzlogsRubyAgent
           safe_metadata.merge(other_metadata)
         end
 
+        # Merge chain information
+        merged_chain = (@chain + other_context.chain).uniq
+
         Context.new(
           correlation_id: @correlation_id,
+          primary_correlation_id: @primary_correlation_id || other_context.primary_correlation_id,
           flow_id: @flow_id,
           session_id: @session_id || other_context.session_id,
           request_id: @request_id || other_context.request_id,
           parent_event_id: @parent_event_id || other_context.parent_event_id,
+          parent_flow_id: @parent_flow_id || other_context.parent_flow_id,
+          depth: [@depth, other_context.depth].max,
+          chain: merged_chain,
           metadata: merged_metadata
+        )
+      end
+
+      # Create a child context for cross-boundary operations (jobs, etc.)
+      def create_child_context(component:, operation: nil, metadata: {})
+        child_correlation_id = generate_correlation_id
+        child_flow_id = "flow_#{component}_#{SecureRandom.urlsafe_base64(8).tr('_-', 'cd')}"
+        child_chain = @chain + [component]
+
+        child_metadata = @metadata.merge(
+          metadata,
+          parent_correlation_id: @correlation_id,
+          inherited_from: @correlation_id,
+          inherited_at: Time.now.utc,
+          component: component,
+          operation: operation
+        ).compact
+
+        Context.new(
+          correlation_id: child_correlation_id,
+          primary_correlation_id: @primary_correlation_id, # Keep the same primary
+          flow_id: child_flow_id,
+          session_id: @session_id,
+          request_id: @request_id,
+          parent_event_id: @parent_event_id,
+          parent_flow_id: @flow_id, # Current flow becomes parent
+          depth: @depth + 1,
+          chain: child_chain,
+          metadata: child_metadata
         )
       end
 
@@ -127,7 +172,8 @@ module EzlogsRubyAgent
         context = Context.new(
           request_id: request_id,
           session_id: session_id,
-          metadata: metadata
+          metadata: metadata.merge(component: 'web'),
+          chain: ['web']
         )
         set_context(context)
         context
@@ -145,60 +191,62 @@ module EzlogsRubyAgent
         context = Context.new(
           correlation_id: correlation_id,
           flow_id: flow_id,
-          metadata: metadata.merge(flow_type: flow_type, entity_id: entity_id)
+          metadata: metadata.merge(flow_type: flow_type, entity_id: entity_id),
+          chain: [flow_type]
         )
         set_context(context)
         context
       end
 
-      # Inherit correlation context from parent (for async operations)
+      # Inherit correlation context from parent with hierarchical support
       #
       # @param parent_context [Context, Hash] Parent context to inherit from
+      # @param component [String] Component name for the child context
       # @param metadata [Hash] Additional context metadata
       # @return [Context] The inherited context
-      def inherit_context(parent_context, metadata = {})
+      def inherit_context(parent_context, component: 'async', metadata: {})
         return start_flow_context('async', SecureRandom.uuid, metadata) unless parent_context
 
-        parent = parent_context.is_a?(Context) ? parent_context : Context.new(**parent_context)
+        parent = if parent_context.is_a?(Context)
+                   parent_context
+                 else
+                   # Convert hash to context, preserving hierarchical fields
+                   symbolized_parent = {}
+                   parent_context.each do |key, value|
+                     symbolized_parent[key.to_s.to_sym] = value
+                   end
+                   Context.new(**symbolized_parent)
+                 end
+
+        # Create a child context that maintains the primary correlation ID
+        child_context = parent.create_child_context(
+          component: component,
+          operation: metadata[:operation],
+          metadata: metadata
+        )
+
+        set_context(child_context)
+        child_context
+      end
+
+      # Create a child context for cross-boundary operations (background jobs)
+      #
+      # @param component [String] Component name (e.g., 'job', 'database')
+      # @param operation [String, nil] Operation name
+      # @param metadata [Hash] Additional metadata
+      # @return [Context] Child context
+      def create_child_context(component:, operation: nil, metadata: {})
         current = current_context
+        return start_flow_context(component, SecureRandom.uuid, metadata) unless current
 
-        # Merge parent and current contexts
-        inherited = if current
-                      current.merge(parent)
-                    else
-                      parent
-                    end
-
-        # Add inheritance metadata
-        inherited_metadata = inherited.metadata.merge(
-          metadata,
-          inherited_from: parent.correlation_id,
-          inherited_at: Time.now.utc
+        child_context = current.create_child_context(
+          component: component,
+          operation: operation,
+          metadata: metadata
         )
 
-        # Preserve parent's correlation_id - prioritize metadata correlation_id if explicitly provided
-        correlation_id = if parent_context.is_a?(Hash) && parent_context[:correlation_id]
-                           parent_context[:correlation_id]
-                         elsif inherited.metadata[:correlation_id]
-                           inherited.metadata[:correlation_id]
-                         elsif parent.respond_to?(:correlation_id) && parent.correlation_id
-                           parent.correlation_id
-                         else
-                           # Generate new correlation ID only if absolutely necessary
-                           generate_correlation_id
-                         end
-
-        new_context = Context.new(
-          correlation_id: correlation_id,
-          flow_id: inherited.flow_id,
-          session_id: inherited.session_id,
-          request_id: inherited.request_id,
-          parent_event_id: inherited.parent_event_id,
-          metadata: inherited_metadata
-        )
-
-        set_context(new_context)
-        new_context
+        set_context(child_context)
+        child_context
       end
 
       # Get the current correlation context
@@ -219,8 +267,8 @@ module EzlogsRubyAgent
         # Convert context to Context object if it's a hash
         new_context = if context.is_a?(Hash)
                         # Extract known parameters and put the rest in metadata
-                        known_params = context.slice(:correlation_id, :flow_id, :session_id, :request_id,
-                                                     :parent_event_id)
+                        known_params = context.slice(:correlation_id, :primary_correlation_id, :flow_id, :session_id, :request_id,
+                                                     :parent_event_id, :parent_flow_id, :depth, :chain)
                         metadata = context.except(*known_params.keys)
                         Context.new(**known_params, metadata: metadata)
                       else
@@ -245,31 +293,6 @@ module EzlogsRubyAgent
         Thread.current[CONTEXT_KEY] = nil
       end
 
-      # Create a child context for a specific event
-      #
-      # @param event_id [String] ID of the child event
-      # @param metadata [Hash] Additional metadata
-      # @return [Context] Child context
-      def create_child_context(event_id, metadata = {})
-        current = current_context
-        return start_flow_context('orphaned', SecureRandom.uuid, metadata) unless current
-
-        child_metadata = current.metadata.merge(
-          metadata,
-          parent_event_id: current.correlation_id,
-          child_event_id: event_id
-        )
-
-        Context.new(
-          correlation_id: current.correlation_id,
-          flow_id: current.flow_id,
-          session_id: current.session_id,
-          request_id: current.request_id,
-          parent_event_id: event_id,
-          metadata: child_metadata
-        )
-      end
-
       # Extract correlation data for serialization (e.g., for job arguments)
       #
       # @return [Hash] Correlation data hash
@@ -285,7 +308,7 @@ module EzlogsRubyAgent
         extract_correlation_data
       end
 
-      # Restore correlation context from serialized data
+      # Restore correlation context from serialized data with hierarchical support
       #
       # @param correlation_data [Hash] Serialized correlation data
       # @return [Context] Restored context
@@ -300,12 +323,30 @@ module EzlogsRubyAgent
           unfrozen_data[key] = deep_dup(value) if value.frozen? && (value.is_a?(Hash) || value.is_a?(Array))
         end
 
-        context = Context.new(**unfrozen_data)
+        # Convert string keys to symbols for Context initialization
+        symbolized_data = {}
+        unfrozen_data.each do |key, value|
+          symbol_key = key.to_s.to_sym
+          symbolized_data[symbol_key] = value
+        end
+
+        context = Context.new(**symbolized_data)
         set_context(context)
         context
       rescue StandardError => e
         warn "[Ezlogs] Failed to restore correlation context: #{e.message}"
         nil
+      end
+
+      # Extract primary correlation ID for story reconstruction
+      #
+      # @param correlation_id [String] Any correlation ID from the chain
+      # @return [String, nil] Primary correlation ID
+      def extract_primary_correlation_id(correlation_id)
+        current = current_context
+        return correlation_id unless current
+
+        current.primary_correlation_id || correlation_id
       end
 
       # Deep duplicate nested hashes and arrays
@@ -371,6 +412,30 @@ module EzlogsRubyAgent
         unfrozen
       rescue StandardError
         {}
+      end
+    end
+
+    # Story reconstruction for complete event flows
+    class StoryReconstructor
+      def self.find_complete_story(correlation_id)
+        # This would typically query your event storage system
+        # For now, return the structure that would be built
+        primary_id = CorrelationManager.extract_primary_correlation_id(correlation_id)
+
+        {
+          primary_correlation_id: primary_id,
+          correlation_id: correlation_id,
+          story_reconstruction_enabled: true,
+          components: [],
+          total_events: 0,
+          duration: 0
+        }
+      end
+
+      def self.extract_primary_correlation_id(correlation_id)
+        # Extract primary correlation ID from any correlation ID in the chain
+        # This would typically involve querying events to find the root
+        correlation_id
       end
     end
   end

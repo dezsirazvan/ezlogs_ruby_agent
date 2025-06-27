@@ -32,8 +32,11 @@ module EzlogsRubyAgent
         EzlogsRubyAgent::CorrelationManager.restore_context(correlation_data)
       end
       
-      # Inherit correlation context from parent
-      EzlogsRubyAgent::CorrelationManager.inherit_context(correlation_data)
+      # Inherit correlation context from parent with job component
+      EzlogsRubyAgent::CorrelationManager.inherit_context(correlation_data, component: 'job', metadata: {
+        job_class: self.class.name,
+        operation: 'perform'
+      })
       
       track_job_event('started', args, start_time, nil, correlation_data)
       
@@ -734,7 +737,7 @@ module EzlogsRubyAgent
 
       context = {
         triggered_by: determine_trigger_source,
-        environment: Rails.env || ENV['RACK_ENV'] || ENV['RAILS_ENV'] || 'unknown',
+        environment: (defined?(Rails) ? Rails.env : nil) || ENV['RACK_ENV'] || ENV['RAILS_ENV'] || 'unknown',
         app_version: extract_app_version,
         gem_version: EzlogsRubyAgent::VERSION,
         worker_hostname: Socket.gethostname,
